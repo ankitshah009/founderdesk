@@ -10,7 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/migrate.mts",
     "setup:agentmail": "tsx --env-file-if-exists=.env.local scripts/setup-agentmail.ts",
     "setup:monid": "tsx --env-file-if-exists=.env.local scripts/setup-monid.ts"
   },
