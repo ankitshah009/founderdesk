@@ -12,6 +12,9 @@ export async function GET(req: Request) {
   if (env().NODE_ENV === "production" && (!secret || !safeEqual(auth, `Bearer ${secret}`))) {
     return NextResponse.json({ error: "unauthorised" }, { status: 401 });
   }
+  if (env().NODE_ENV === "production" && !env().DATABASE_URL) {
+    return NextResponse.json({ ok: true, skipped: "DATABASE_URL is not configured yet" });
+  }
   const { steps } = await runWork({ budgetMs: 50_000 });
   return NextResponse.json({ ok: true, steps });
 }
