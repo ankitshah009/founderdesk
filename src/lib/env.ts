@@ -120,7 +120,11 @@ export function integrationStatus(): IntegrationStatus[] {
       label: "Neon",
       role: "State and evidence",
       live: Boolean(e.DATABASE_URL),
-      detail: e.DATABASE_URL ? "Serverless Postgres" : "Local embedded Postgres (PGlite)",
+      detail: e.DATABASE_URL
+        ? "Serverless Postgres"
+        : e.NODE_ENV === "production"
+          ? "Not configured — orders are unavailable until DATABASE_URL is set"
+          : "Local embedded Postgres (PGlite)",
     },
     {
       name: "naive",
