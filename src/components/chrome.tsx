@@ -13,6 +13,7 @@ export function Nav() {
           <Link href="/#evidence" className="hover:text-fg">Evidence</Link>
           <Link href="/#architecture" className="hover:text-fg">Architecture</Link>
           <Link href="/#pricing" className="hover:text-fg">Pricing</Link>
+          <Link href="/articles" className="hover:text-fg">Articles</Link>
         </nav>
         <div className="flex items-center gap-2">
           <Link href="/desk" className="hidden px-2 text-sm text-fg-2 hover:text-fg sm:inline">Desk</Link>
@@ -36,7 +37,7 @@ export function Announcement() {
 }
 
 const columns = [
-  { title: "Product", links: [["How it works", "/#how"], ["Evidence", "/#evidence"], ["Pricing", "/#pricing"], ["Start an article", "/start"]] },
+  { title: "Product", links: [["How it works", "/#how"], ["Evidence", "/#evidence"], ["Pricing", "/#pricing"], ["Articles", "/articles"], ["Start an article", "/start"]] },
   { title: "Builders", links: [["Architecture", "/#architecture"], ["MCP server", "/desk/connect"], ["Integration status", "/status"]] },
   { title: "Founders", links: [["Operator desk", "/desk"], ["Email intake", "/start#email"]] },
 ] as const;
