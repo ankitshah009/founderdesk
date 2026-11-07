@@ -23,6 +23,11 @@ async function connect(): Promise<DB> {
     const { drizzle } = await import("drizzle-orm/neon-http");
     return drizzle(neon(e.DATABASE_URL), { schema }) as unknown as DB;
   }
+  if (e.NODE_ENV === "production" && !e.PGLITE_DIR) {
+    // Serverless filesystems are read-only and not shared between functions,
+    // so the embedded database is for local development and tests only.
+    throw new Error("DATABASE_URL is not set. Production needs Neon (or any Postgres): set DATABASE_URL and run `pnpm db:migrate`.");
+  }
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
