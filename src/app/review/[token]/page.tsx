@@ -135,6 +135,24 @@ async function Review({ params }: PageProps<"/review/[token]">) {
           </section>
         ) : null}
 
+        {ready && review?.findings.some((f) => f.id.startsWith("agent-") && !f.resolved) ? (
+          <section>
+            <MonoLabel className="mb-3">Reviewer notes for you</MonoLabel>
+            <ul className="space-y-2.5">
+              {review.findings
+                .filter((f) => f.id.startsWith("agent-") && !f.resolved)
+                .slice(0, 5)
+                .map((f) => (
+                  <li key={f.id + f.claim.slice(0, 20)} className="rounded-lg border border-line bg-panel p-3 text-sm text-fg-2">
+                    {f.claim}
+                    {f.proposedFix ? <p className="mt-1.5 text-xs text-muted">Suggestion: {f.proposedFix}</p> : null}
+                  </li>
+                ))}
+            </ul>
+            <p className="mt-2 text-xs text-subtle">Optional — use “Edit the text” to apply any you agree with.</p>
+          </section>
+        ) : null}
+
         <section>
           <MonoLabel className="mb-3">Sources beside claims</MonoLabel>
           <ul className="space-y-2.5">

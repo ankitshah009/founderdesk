@@ -233,3 +233,20 @@ describe("autonomy", () => {
     expect(reviews.some((r) => r.kind === "review" && (r.input as { draftId?: string }).draftId === d!.id)).toBe(true);
   });
 });
+
+describe("publish gate", () => {
+  it("lets the founder approve when only the reviewer agent's soft notes remain", async () => {
+    stubPublicWeb();
+    const { createJob } = await import("@/lib/workflow/intake");
+    const { approveDraft } = await import("@/lib/workflow/publish");
+    const db = await getDb();
+    const job = await createJob({ channel: "web", founderEmail: "notes@founder.test", subject: "Gate", body: "I want to write about why gates should be precise. My audience is founders." });
+    const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: "T", dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A", contentHash: "hash-1" }).returning();
+    await db.insert(reviews).values({ jobId: job.id, draftId: d!.id, outcome: "READY_FOR_APPROVAL", summary: "ok", findings: [{ id: "agent-x-0", severity: "blocking", kind: "style", claim: "Bold sentence" }] });
+    await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
+    await approveDraft({ jobId: job.id, draftId: d!.id, contentHash: "hash-1", destinations: [] });
+    await runWork({ budgetMs: 8_000 });
+    const [pub] = await db.select().from(publications).where(eq(publications.jobId, job.id));
+    expect(pub?.status).toBe("published");
+  });
+});

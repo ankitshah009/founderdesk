@@ -67,7 +67,11 @@ async function gate(job: Job, draftId: string, destination: string) {
   if (!draft || draft.id !== draftId) throw new PermanentError("Gate: the approved draft is no longer the current draft.");
   const review = await reviewForDraft(draft.id);
   if (review?.outcome !== "READY_FOR_APPROVAL") throw new PermanentError("Gate: the current draft has not passed review.");
-  if (review.findings.some((f) => f.severity === "blocking" && !f.resolved)) throw new PermanentError("Gate: blocking findings are unresolved.");
+  // Only the app's deterministic checks block publication. The reviewer
+  // agent's remaining notes were shown to the founder, who approved anyway.
+  if (review.findings.some((f) => f.severity === "blocking" && !f.resolved && !f.id.startsWith("agent-"))) {
+    throw new PermanentError("Gate: blocking findings are unresolved.");
+  }
   const db = await getDb();
   const [approval] = await db
     .select()
