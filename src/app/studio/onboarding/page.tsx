@@ -16,10 +16,10 @@ import { captureBrand, finishOnboarding, saveBrand } from "../actions";
 
 export const metadata: Metadata = { title: "Onboarding" };
 
-export default function OnboardingPage() {
+export default function OnboardingPage(props: PageProps<"/studio/onboarding">) {
   return (
     <Suspense fallback={<Skeleton />}>
-      <Onboarding />
+      <Onboarding searchParams={props.searchParams} />
     </Suspense>
   );
 }
@@ -34,10 +34,15 @@ function Step({ n, title, children }: { n: number; title: string; children?: Rea
   );
 }
 
-async function Onboarding() {
+async function Onboarding({ searchParams }: { searchParams: PageProps<"/studio/onboarding">["searchParams"] }) {
   await connection();
   const session = await studioSession();
   if (!session) return <SignedOut />;
+  const sp = await searchParams;
+  const { safeNext } = await import("@/lib/auth-google");
+  const next = safeNext(typeof sp.next === "string" ? sp.next : "/studio");
+  const toArticle = next.startsWith("/start");
+  const missingBrand = sp.missing === "brand";
   const [profile, knowledge, jobs] = await Promise.all([getProfile(session.email), listKnowledge(session.email), founderJobs(session.email)]);
   const brand = profile.brand;
   const samples = knowledge.filter((k) => k.kind === "sample").length;
@@ -52,6 +57,17 @@ async function Onboarding() {
       >
         {profile.onboardedAt ? <Chip tone="green">Onboarded</Chip> : null}
       </PageHead>
+
+      {toArticle && !profile.onboardedAt ? (
+        <p role="status" className="mb-6 rounded-xl border border-accent/40 bg-accent-tint px-4 py-3 text-sm text-fg">
+          One quick step before your article: tell the desk about your company so it writes in your brand and voice. About two minutes, then we take you straight back.
+        </p>
+      ) : null}
+      {missingBrand ? (
+        <p role="alert" className="mb-6 rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-amber">
+          Add your website, a document or a paragraph about your company in step 1 first. The desk needs it to write for you.
+        </p>
+      ) : null}
 
       <SetupProgress steps={steps} current={["brand", "voice"]} />
 
@@ -110,9 +126,12 @@ async function Onboarding() {
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
         <form action={finishOnboarding}>
-          <Button type="submit">{profile.onboardedAt ? "Back to overview" : brand ? "Finish setup" : "Skip for now"}</Button>
+          <input type="hidden" name="next" value={next} />
+          <Button type="submit" disabled={!brand}>
+            {profile.onboardedAt ? (toArticle ? "Continue to your article" : "Back to overview") : toArticle ? "Finish setup and start my article" : "Finish setup"}
+          </Button>
         </form>
-        {!brand ? <span className="text-sm text-muted">Everything here is optional. You can come back any time.</span> : null}
+        {!brand ? <span className="text-sm text-muted">Capture your company in step 1 to finish. A writing sample is optional but makes drafts sound like you.</span> : null}
       </div>
     </>
   );

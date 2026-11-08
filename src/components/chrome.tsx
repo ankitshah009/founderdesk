@@ -1,7 +1,32 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Wordmark } from "./brand";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { ButtonLink } from "./ui";
+
+function SignedOutLinks() {
+  return (
+    <>
+      <Link href="/signin?next=/studio" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg">Sign in</Link>
+      <ButtonLink href="/signup" variant="secondary" className="max-sm:hidden">Sign up</ButtonLink>
+    </>
+  );
+}
+
+/** The header reflects the session: signed-in founders see their Studio, not "Sign in". */
+async function AccountLinks() {
+  await connection();
+  const { currentSession } = await import("@/lib/auth");
+  const session = await currentSession();
+  if (!session) return <SignedOutLinks />;
+  return (
+    <>
+      <Link href="/account" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg max-sm:hidden">Your orders</Link>
+      <ButtonLink href="/studio" variant="secondary" className="max-sm:hidden" title={session.email}>Studio</ButtonLink>
+    </>
+  );
+}
 
 export function Nav() {
   return (
@@ -17,8 +42,9 @@ export function Nav() {
           <Link href="/studio" className="hover:text-fg">Studio</Link>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/signin?next=/studio" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg">Sign in</Link>
-          <ButtonLink href="/signup" variant="secondary" className="max-sm:hidden">Sign up</ButtonLink>
+          <Suspense fallback={<SignedOutLinks />}>
+            <AccountLinks />
+          </Suspense>
           <ButtonLink href="/start">Start an article</ButtonLink>
         </div>
       </div>

@@ -55,7 +55,7 @@ export type ChallengeResult = { sent: boolean; challengeId?: string; link?: stri
  * Create a sign-in challenge and email it. Always resolves the same way to the
  * caller (no enumeration); `sent` is for logging and tests only.
  */
-export async function startChallenge(rawEmail: string, opts: { deliver?: boolean; allowNew?: boolean } = {}): Promise<ChallengeResult> {
+export async function startChallenge(rawEmail: string, opts: { deliver?: boolean; allowNew?: boolean; next?: string | null; meta?: { name?: string; website?: string } } = {}): Promise<ChallengeResult> {
   const email = normalize(rawEmail);
   if (!isEmail(email)) throw new AuthError("Enter a valid email address.");
   const db = await getDb();
@@ -85,6 +85,8 @@ export async function startChallenge(rawEmail: string, opts: { deliver?: boolean
       linkTokenHash: sha256(linkToken),
       codeHash: keyed("code", code),
       ipHash,
+      next: opts.next ?? null,
+      meta: opts.meta && (opts.meta.name || opts.meta.website) ? opts.meta : null,
       expiresAt: new Date(Date.now() + CHALLENGE_MINUTES * 60_000),
     })
     .returning();
@@ -105,6 +107,11 @@ export async function startChallenge(rawEmail: string, opts: { deliver?: boolean
 
 /** Consume a challenge by its magic-link token. */
 export async function consumeLink(challengeId: string, token: string): Promise<string> {
+  return (await consumeLinkDetails(challengeId, token)).email;
+}
+
+/** Like consumeLink, plus the destination and sign-up details stored with the challenge. */
+export async function consumeLinkDetails(challengeId: string, token: string): Promise<{ email: string; next: string | null; meta: { name?: string; website?: string } | null }> {
   const db = await getDb();
   const [ch] = await db
     .update(authChallenges)
@@ -122,7 +129,7 @@ export async function consumeLink(challengeId: string, token: string): Promise<s
     await audit("signin.link_failed", null, challengeId);
     throw new AuthError("This sign-in link has expired or was already used. Request a new one.");
   }
-  return ch.email;
+  return { email: ch.email, next: ch.next, meta: ch.meta };
 }
 
 /** Consume the most recent live challenge for an email by its 6-digit code. */

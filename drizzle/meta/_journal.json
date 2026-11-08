@@ -85,6 +85,13 @@
       "when": 1794157419433,
       "tag": "0011_studio",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794157775495,
+      "tag": "0012_auth_next_mobilerun_accounts",
+      "breakpoints": true
     }
   ]
 }

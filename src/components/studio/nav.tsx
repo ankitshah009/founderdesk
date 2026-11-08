@@ -11,6 +11,7 @@ export const STUDIO_LINKS: Array<{ href: string; label: string; group: "Workspac
   { href: "/studio/knowledge", label: "Knowledge", group: "Workspace" },
   { href: "/studio/agents", label: "Agents", group: "Desk" },
   { href: "/studio/calendar", label: "Calendar", group: "Desk" },
+  { href: "/studio/scheduler", label: "Scheduler", group: "Desk" },
   { href: "/studio/ideas", label: "Idea Lab", group: "Desk" },
   { href: "/studio/insights", label: "Insights", group: "Desk" },
   { href: "/studio/connections", label: "Connections", group: "Desk" },

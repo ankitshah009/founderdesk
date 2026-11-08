@@ -52,6 +52,10 @@ export default function SignUpPage() {
 
 async function SignedInRedirect() {
   await connection();
-  if (await currentSession()) redirect("/studio");
+  const session = await currentSession();
+  if (session) {
+    const { landingAfterSignIn } = await import("@/lib/studio/gate");
+    redirect(await landingAfterSignIn(session.email, "/studio"));
+  }
   return null;
 }

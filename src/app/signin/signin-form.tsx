@@ -4,9 +4,10 @@ import { useActionState } from "react";
 import { requestSignIn, verifySignInCode, type SignInState } from "@/app/actions";
 import { Button, inputClass } from "@/components/ui";
 
-function EmailStep({ state, action, pending, mode }: { state: SignInState; action: (f: FormData) => void; pending: boolean; mode: "signin" | "signup" }) {
+function EmailStep({ state, action, pending, mode, next }: { state: SignInState; action: (f: FormData) => void; pending: boolean; mode: "signin" | "signup"; next?: string }) {
   return (
     <form action={action} className="space-y-4">
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       {mode === "signup" ? (
         <label className="block">
           <span className="mb-1.5 block text-sm text-fg-2">Your name</span>
@@ -64,7 +65,7 @@ export function SignInForm({ next, mode = "signin", google = false }: { next?: s
     return (
       <div className="space-y-4">
         {google ? <GoogleButton next={next} /> : null}
-        <EmailStep state={state} action={request} pending={requesting} mode={mode} />
+        <EmailStep state={state} action={request} pending={requesting} mode={mode} next={next} />
       </div>
     );
   const domain = state.email?.split("@")[1] ?? "";

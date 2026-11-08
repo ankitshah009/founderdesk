@@ -25,9 +25,10 @@ export async function getAccount(ownerEmail: string, provider: SocialProvider): 
 }
 
 /** Store (or replace) the founder's account for a provider. Tokens are encrypted at rest. */
-export async function upsertAccount(ownerEmail: string, provider: SocialProvider, profile: Profile, tokens: TokenSet | null, opts: { simulated?: boolean } = {}) {
+export async function upsertAccount(ownerEmail: string, provider: SocialProvider, profile: Profile, tokens: TokenSet | null, opts: { simulated?: boolean; via?: "oauth" | "mobilerun" } = {}) {
   const db = await getDb();
   const values = {
+    via: opts.via ?? ("oauth" as const),
     externalUserId: profile.externalUserId,
     handle: profile.handle,
     accessTokenEnc: tokens ? encryptSecret(tokens.accessToken) : null,
@@ -121,7 +122,21 @@ async function markExpired(id: string) {
  */
 export async function resolveCredentials(ownerEmail: string, provider: SocialProvider): Promise<SocialCredentials | null> {
   const account = await getAccount(ownerEmail, provider);
+  // Phone-connected accounts post through Mobile Run, not an API token.
+  if (account?.status === "connected" && account.via === "mobilerun") return null;
   if (account?.status === "connected") return accountCredentials(account);
   if (provider === "instagram") return null;
   return SOCIAL[provider].envCredentials();
+}
+
+/** The founder's account signed in on the Mobile Run phone, confirmed by a read-only phone check. */
+export function connectViaMobileRun(ownerEmail: string, provider: SocialProvider, handle: string) {
+  const clean = handle.trim().slice(0, 80);
+  return upsertAccount(ownerEmail, provider, { externalUserId: `mobilerun:${clean.toLowerCase()}`, handle: clean }, null, { via: "mobilerun" });
+}
+
+/** True when this founder posts to `provider` through the Mobile Run phone. */
+export async function postsViaPhone(ownerEmail: string, provider: SocialProvider): Promise<boolean> {
+  const a = await getAccount(ownerEmail, provider);
+  return a?.status === "connected" && a.via === "mobilerun";
 }

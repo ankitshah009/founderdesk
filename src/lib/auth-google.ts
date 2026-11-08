@@ -41,7 +41,7 @@ export function verifyGoogleState(token: string | undefined | null, now = Date.n
 }
 
 export function safeNext(raw: string | null | undefined): string {
-  return raw && /^\/(studio|account)(\/|$|\?)/.test(raw) ? raw : "/studio";
+  return raw && /^\/(studio|account|start|orders\/[\w-]+|review\/[\w.-]+)(\/|$|\?)/.test(raw) && !raw.startsWith("//") ? raw : "/studio";
 }
 
 export function googleStart(next: string): { url: string; state: string } {

@@ -392,6 +392,9 @@ export const authChallenges = pgTable(
     ipHash: text("ip_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    /** Where to land after this challenge, and sign-up details saved only once it is verified. */
+    next: text("next"),
+    meta: jsonb("meta").$type<{ name?: string; website?: string }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("auth_challenges_email_idx").on(t.email, t.createdAt), index("auth_challenges_ip_idx").on(t.ipHash, t.createdAt)],
@@ -690,6 +693,8 @@ export const socialAccounts = pgTable(
     refreshTokenEnc: text("refresh_token_enc"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     scopes: text("scopes"),
+    /** How posts reach this account: the platform API (OAuth) or the app signed in on the Mobile Run phone. */
+    via: text("via").$type<"oauth" | "mobilerun">().notNull().default("oauth"),
     simulated: boolean("simulated").notNull().default(false),
     /** Preselect this account at approval, so approved articles are announced without another step. */
     autoPost: boolean("auto_post").notNull().default(true),

@@ -71,6 +71,18 @@ export async function readMaterialAction(prev: IdeasState, form: FormData): Prom
   }
 }
 
+/**
+ * Signed-out visitors may start an article as a free hook. Signed-in founders
+ * finish onboarding first, so the desk writes from their brand and voice.
+ */
+async function onboardingGate(): Promise<void> {
+  const { currentSession } = await import("@/lib/auth");
+  const session = await currentSession();
+  if (!session) return;
+  const { needsOnboarding, onboardingPath } = await import("@/lib/studio/gate");
+  if (await needsOnboarding(session.email)) redirect(onboardingPath("/start"));
+}
+
 const ideaStartSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
   name: z.string().trim().max(120).optional(),
@@ -82,6 +94,7 @@ const ideaStartSchema = z.object({
 
 /** Step 2: start the order from a picked idea, or from the founder's own argument. */
 export async function startFromIdea(_: ActionState, form: FormData): Promise<ActionState> {
+  await onboardingGate();
   const parsed = ideaStartSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
   const v = parsed.data;
@@ -128,6 +141,7 @@ export async function materialFromFile(form: FormData): Promise<{ text?: string;
 }
 
 export async function startArticle(_: ActionState, form: FormData): Promise<ActionState> {
+  await onboardingGate();
   const parsed = startSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
   const v = parsed.data;
@@ -270,7 +284,7 @@ export async function requestSignIn(_: SignInState, form: FormData): Promise<Sig
   const website = String(form.get("website") ?? "").trim().slice(0, 300) || undefined;
   let res;
   try {
-    res = await startChallenge(email, { allowNew: true });
+    res = await startChallenge(email, { allowNew: true, next: String(form.get("next") ?? "") || null, meta: { name, website } });
   } catch (err) {
     if (err instanceof AuthError) return { error: err.message, name, website, email };
     throw err;
@@ -283,26 +297,33 @@ export async function requestSignIn(_: SignInState, form: FormData): Promise<Sig
 export async function verifySignInCode(_: SignInState, form: FormData): Promise<SignInState> {
   const { AuthError, consumeCode, createSession } = await import("@/lib/auth");
   const email = String(form.get("email") ?? "");
+  let verified: string;
   try {
-    const verified = await consumeCode(email, String(form.get("code") ?? "").replace(/\s/g, ""));
+    verified = await consumeCode(email, String(form.get("code") ?? "").replace(/\s/g, ""));
     await createSession(verified);
     await saveSignupDetails(verified, String(form.get("name") ?? ""), String(form.get("website") ?? ""));
   } catch (err) {
     if (err instanceof AuthError) return { error: err.message, step: "code", email };
     throw err;
   }
-  redirect(String(form.get("next") ?? "").startsWith("/studio") ? String(form.get("next")) : "/account");
+  const { landingAfterSignIn } = await import("@/lib/studio/gate");
+  redirect(await landingAfterSignIn(verified, String(form.get("next") ?? "") || "/studio"));
 }
 
 export async function confirmSignInLink(form: FormData) {
-  const { AuthError, consumeLink, createSession } = await import("@/lib/auth");
+  const { AuthError, consumeLinkDetails, createSession } = await import("@/lib/auth");
+  let signedIn: Awaited<ReturnType<typeof consumeLinkDetails>>;
   try {
-    await createSession(await consumeLink(String(form.get("c") ?? ""), String(form.get("t") ?? "")));
+    signedIn = await consumeLinkDetails(String(form.get("c") ?? ""), String(form.get("t") ?? ""));
+    await createSession(signedIn.email);
   } catch (err) {
     if (err instanceof AuthError) redirect("/signin?expired=1");
     throw err;
   }
-  redirect("/account");
+  // Sign-up details are saved only now that the address is verified.
+  await saveSignupDetails(signedIn.email, signedIn.meta?.name ?? "", signedIn.meta?.website ?? "");
+  const { landingAfterSignIn } = await import("@/lib/studio/gate");
+  redirect(await landingAfterSignIn(signedIn.email, signedIn.next ?? "/studio"));
 }
 
 export async function signOutAction(form: FormData) {

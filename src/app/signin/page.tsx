@@ -42,7 +42,11 @@ export default function SignInPage(props: PageProps<"/signin">) {
 async function Notice({ searchParams }: PageProps<"/signin">) {
   await connection();
   const next = (await searchParams).next;
-  if (await currentSession()) redirect(typeof next === "string" && next.startsWith("/studio") ? next : "/account");
+  const session = await currentSession();
+  if (session) {
+    const { landingAfterSignIn } = await import("@/lib/studio/gate");
+    redirect(await landingAfterSignIn(session.email, typeof next === "string" ? next : "/studio"));
+  }
   const sp = await searchParams;
   if (sp.google === "failed") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Google sign-in didn&apos;t complete. Try again, or use your email below.</p>;
   if (sp.google === "unavailable") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Google sign-in isn&apos;t set up on this deployment yet. Use your email below.</p>;
@@ -51,5 +55,6 @@ async function Notice({ searchParams }: PageProps<"/signin">) {
 
 async function FormWithNext({ searchParams }: PageProps<"/signin">) {
   const next = (await searchParams).next;
-  return <SignInForm google={googleAvailable()} next={typeof next === "string" && next.startsWith("/studio") ? next : undefined} />;
+  const { safeNext } = await import("@/lib/auth-google");
+  return <SignInForm google={googleAvailable()} next={typeof next === "string" ? safeNext(next) : "/studio"} />;
 }

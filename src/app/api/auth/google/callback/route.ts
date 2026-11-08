@@ -21,7 +21,8 @@ export async function GET(req: Request) {
       const p = await getProfile(who.email);
       if (!p.displayName) await updateProfile(who.email, { displayName: who.name });
     }
-    return NextResponse.redirect(new URL(state.next, req.url), 303);
+    const { landingAfterSignIn } = await import("@/lib/studio/gate");
+    return NextResponse.redirect(new URL(await landingAfterSignIn(who.email, state.next), req.url), 303);
   } catch (err) {
     console.error("[founderdesk] Google sign-in failed", err);
     return NextResponse.redirect(new URL("/signin?google=failed", req.url), 303);

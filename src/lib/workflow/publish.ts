@@ -6,13 +6,13 @@ import { approvals, dispatches, drafts, images, jobs, publications, type Dispatc
 import { isLive } from "@/lib/env";
 import { CMS, CMS_SIMULATED_DETAIL, articleHtml, cmsSimulated, isCms, simulatedCmsPost } from "@/lib/destinations/cms";
 import { SIMULATED_DETAIL, SOCIAL, postInstagram, renderAnnouncement, simulatedPost, verifyInstagram, type SocialCredentials, type SocialDestination } from "@/lib/destinations/social";
-import { ReconnectError, resolveCredentials } from "@/lib/social/accounts";
+import { ReconnectError, postsViaPhone, resolveCredentials } from "@/lib/social/accounts";
 import { approvalDestinations, instagramViaMobileRun } from "@/lib/social/destinations";
 import * as mobilerun from "@/lib/integrations/mobilerun";
 import { articleSlug } from "@/lib/brief";
 import { draftContentHash } from "@/lib/security";
 import { links } from "@/lib/links";
-import { PermanentError, idempotencyKey, registerHandler } from "./engine";
+import { PermanentError, idempotencyKey, registerHandler, type StartResult } from "./engine";
 import { queueMessage, templates } from "./outbound";
 import { enqueue, getJob, latestDraft, reviewForDraft, transition } from "./store";
 
@@ -244,6 +244,26 @@ async function webPublication(jobId: string): Promise<Publication | null> {
 type Calls = { post(): Promise<{ externalId: string; url: string | null }>; verify(externalId: string): Promise<{ ok: boolean; detail: string }> };
 
 /** Founder account → operator env token → none. A failed refresh is not worth retrying. */
+/**
+ * Post through the account signed in on the Mobile Run phone. The publication
+ * row is written before the task starts, so a crash after the phone posted is
+ * never retried into a duplicate post.
+ */
+async function phonePublish(a: { d: Dispatch; jobId: string; draftId: string; approvalId: string; contentHash: string; destination: string; task: string }): Promise<StartResult> {
+  const db = await getDb();
+  const [existing] = await db.select().from(publications).where(and(eq(publications.jobId, a.jobId), eq(publications.destination, a.destination))).limit(1);
+  if (existing?.status === "published") return { done: { publicationId: existing.id, url: existing.url } };
+  if (existing && !existing.externalId) throw new PermanentError(`An earlier ${a.destination} post attempt may have gone through. Check the account before retrying.`);
+  if (existing?.externalId?.startsWith("mobilerun:")) return { started: existing.externalId.slice("mobilerun:".length), provider: "mobilerun" };
+  const [row] = await db
+    .insert(publications)
+    .values({ jobId: a.jobId, draftId: a.draftId, approvalId: a.approvalId, destination: a.destination, contentHash: a.contentHash, status: "publishing" })
+    .returning();
+  const task = await mobilerun.runTask({ task: a.task, idempotencyKey: idempotencyKey(a.d), outputSchema: mobilerun.SOCIAL_POST_SCHEMA, maxSteps: 80 });
+  await db.update(publications).set({ externalId: `mobilerun:${task.id}` }).where(eq(publications.id, row!.id));
+  return { started: task.id, provider: "mobilerun" };
+}
+
 async function credentialsFor(email: string, provider: "x" | "linkedin" | "instagram"): Promise<SocialCredentials | null> {
   try {
     return await resolveCredentials(email, provider);
@@ -347,28 +367,12 @@ registerHandler("publish", {
       if (!imgs.length) throw new PermanentError("Instagram needs at least one image — add images before approving Instagram");
       const base = links.article("").replace(/\/a\/$/, "");
       const imageUrls = imgs.slice(0, 10).map((i) => `${base}/api/images/${i.id}`);
-      if (creds) {
+      if (creds && !(await postsViaPhone(job.founderEmail, "instagram"))) {
         // The founder's own business/creator account via the Instagram Graph API.
         return postOnce({ ...post, label: "Instagram" }, async () => socialCalls(creds, web.url!, () => postInstagram(creds, imageUrls, ig.caption), (id) => verifyInstagram(creds, id)));
       }
-      // Fallback: the operator's account on the Mobile Run phone.
-      const [existing] = await db.select().from(publications).where(and(eq(publications.jobId, job.id), eq(publications.destination, "instagram"))).limit(1);
-      if (existing?.status === "published") return { done: { publicationId: existing.id, url: existing.url } };
-      if (existing && !existing.externalId) {
-        throw new PermanentError("An earlier Instagram post attempt may have gone through. Check the account before retrying.");
-      }
-      const [row] = await db
-        .insert(publications)
-        .values({ jobId: job.id, draftId: draft.id, approvalId: approval.id, destination, contentHash: draft.contentHash, status: "publishing" })
-        .returning();
-      const task = await mobilerun.runTask({
-        task: mobilerun.instagramPostTask(imageUrls, ig.slides, ig.caption),
-        idempotencyKey: idempotencyKey(d),
-        outputSchema: mobilerun.INSTAGRAM_POST_SCHEMA,
-        maxSteps: 80,
-      });
-      await db.update(publications).set({ externalId: `mobilerun:${task.id}` }).where(eq(publications.id, row!.id));
-      return { started: task.id, provider: "mobilerun" };
+      // The account signed in on the Mobile Run phone.
+      return phonePublish({ d, jobId: job.id, draftId: draft.id, approvalId: approval.id, contentHash: draft.contentHash, destination, task: mobilerun.instagramPostTask(imageUrls, ig.slides, ig.caption) });
     }
 
     // Social announcement: needs the live article URL first.
@@ -386,6 +390,11 @@ registerHandler("publish", {
     const posts = Array.isArray(variant)
       ? variant.map((t) => renderAnnouncement(t, web.url!, adapter.maxLength))
       : [renderAnnouncement(variant ?? draft.announcement, web.url!, adapter.maxLength)];
+    if (await postsViaPhone(job.founderEmail, adapter.id)) {
+      // The founder's account signed in on the Mobile Run phone posts it.
+      const task = destination === "x" ? mobilerun.xPostTask(posts) : mobilerun.linkedinPostTask(posts.join("\n\n"));
+      return phonePublish({ d, jobId: job.id, draftId: draft.id, approvalId: approval.id, contentHash: draft.contentHash, destination, task });
+    }
     return postOnce({ ...post, label: adapter.label }, async () => {
       const creds = await credentialsFor(job.founderEmail, adapter.id);
       if (!creds) throw new PermanentError(`${adapter.label} is not connected`);
@@ -393,24 +402,26 @@ registerHandler("publish", {
     });
   },
   pollEveryMs: 10_000,
-  // Only Instagram (via Mobile Run) is asynchronous: wait for the phone task.
+  // Posts made on the Mobile Run phone are asynchronous: wait for the phone task.
   async poll(d) {
     const s = await mobilerun.getTaskStatus(d.providerRef!);
     if (!mobilerun.TERMINAL_TASK.has(s.status)) return { running: true };
+    const destination = String(d.input.destination) as mobilerun.PhonePlatform;
     const o = (s.output ?? {}) as { posted?: boolean; postUrl?: string | null; problems?: string[] };
-    // A finished task is not a post: require success and a real post link.
-    if (s.status === "completed" && o.posted && o.postUrl && /^https:\/\/(www\.)?instagram\.com\/(p|reel)\//.test(o.postUrl)) return { done: { postUrl: o.postUrl } };
-    return { failed: `Instagram post not confirmed: ${o.problems?.join("; ") || s.message || s.status}`, retryable: false };
+    // A finished task is not a post: require success and a real post link for that platform.
+    const pattern = mobilerun.POST_URL[destination] ?? mobilerun.POST_URL.instagram;
+    if (s.status === "completed" && o.posted && o.postUrl && pattern.test(o.postUrl)) return { done: { postUrl: o.postUrl } };
+    return { failed: `${destination} post not confirmed on the phone: ${o.problems?.join("; ") || s.message || s.status}`, retryable: false };
   },
   async complete(d, output) {
     const out = output as { publicationId: string; url: string; postUrl?: string };
     const destination = String(d.input.destination);
     const db = await getDb();
-    if (destination === "instagram" && out.postUrl) {
+    if (destination !== "web" && out.postUrl) {
       await db
         .update(publications)
-        .set({ status: "published", url: out.postUrl, verification: { ok: true, checkedAt: new Date().toISOString(), detail: "Post link reported by the phone agent after sharing" } })
-        .where(and(eq(publications.jobId, d.jobId), eq(publications.destination, "instagram")));
+        .set({ status: "published", url: out.postUrl, verification: { ok: true, checkedAt: new Date().toISOString(), detail: "Post link reported by the phone agent after posting" } })
+        .where(and(eq(publications.jobId, d.jobId), eq(publications.destination, destination)));
       return;
     }
     if (destination !== "web") return;

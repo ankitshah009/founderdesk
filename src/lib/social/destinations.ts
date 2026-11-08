@@ -30,11 +30,11 @@ export async function approvalDestinations(founderEmail: string): Promise<Approv
   for (const id of ["x", "linkedin"] as const) {
     const a = accounts.find((x) => x.provider === id);
     const label = SOCIAL[id].label;
-    if (a) out.push({ id, label: `Announce on ${label} as ${a.handle}`, kind: "social", via: "founder", handle: a.handle, simulated: a.simulated, autoPost: a.autoPost });
+    if (a) out.push({ id, label: `Announce on ${label} as ${a.handle}${a.via === "mobilerun" ? " (from your phone)" : ""}`, kind: "social", via: a.via === "mobilerun" ? "mobilerun" : "founder", handle: a.handle, simulated: a.simulated, autoPost: a.autoPost });
     else if (SOCIAL[id].connected()) out.push({ id, label: `Announce on ${label}`, kind: "social", via: "env", handle: null, simulated: false, autoPost: false });
   }
   const ig = accounts.find((x) => x.provider === "instagram");
-  if (ig) out.push({ id: "instagram", label: `Post to Instagram as ${ig.handle}`, kind: "social", via: "founder", handle: ig.handle, simulated: ig.simulated, autoPost: ig.autoPost });
+  if (ig) out.push({ id: "instagram", label: `Post to Instagram as ${ig.handle}${ig.via === "mobilerun" ? " (from your phone)" : ""}`, kind: "social", via: ig.via === "mobilerun" ? "mobilerun" : "founder", handle: ig.handle, simulated: ig.simulated, autoPost: ig.autoPost });
   else if (instagramViaMobileRun()) out.push({ id: "instagram", label: "Post to Instagram (via Mobile Run)", kind: "social", via: "mobilerun", handle: null, simulated: false, autoPost: false });
   for (const c of availableCms()) out.push({ id: c.id, label: `Publish to ${c.label}`, kind: "cms", via: "cms", handle: null, simulated: c.simulated, autoPost: false });
   return out;

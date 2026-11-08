@@ -9,6 +9,8 @@ import { CMS, CMS_DESTINATIONS, cmsSimulated } from "@/lib/destinations/cms";
 import { SOCIAL } from "@/lib/destinations/social";
 import { listAccounts } from "@/lib/social/accounts";
 import { instagramViaMobileRun } from "@/lib/social/destinations";
+import { PhoneConnect } from "@/components/studio/phone-connect";
+import { isLive } from "@/lib/env";
 import { PROVIDER_ENV, PROVIDER_LABEL, isProvider, providerConfigured, redirectUri } from "@/lib/social/oauth";
 import { studioSession } from "@/lib/studio/session";
 import { disconnect, toggleAutoPost } from "./actions";
@@ -112,7 +114,11 @@ async function Connections({ searchParams }: PageProps<"/studio/connections">) {
   );
 }
 
+const MOBILERUN_DEVICE_URL = "https://cloud.mobilerun.ai";
+
 function SocialCard({ provider, account }: { provider: SocialProvider; account: SocialAccount | null }) {
+  const phone = isLive("mobilerun");
+  const viaPhone = account?.via === "mobilerun";
   const configured = providerConfigured(provider);
   const fallback = operatorFallback(provider);
   const label = PROVIDER_LABEL[provider];
@@ -128,6 +134,7 @@ function SocialCard({ provider, account }: { provider: SocialProvider; account: 
             <p className="mt-0.5 text-[11px] text-subtle">
               Connected {account.connectedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               {account.simulated ? " · simulated account, nothing is posted" : ""}
+              {viaPhone ? " · posts from your Mobile Run phone" : ""}
             </p>
           </div>
           <form action={toggleAutoPost} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2">
@@ -143,7 +150,7 @@ function SocialCard({ provider, account }: { provider: SocialProvider; account: 
             </Button>
           </form>
           <div className="flex flex-wrap gap-2">
-            {account.status !== "connected" || (account.simulated && configured) ? (
+            {!viaPhone && (account.status !== "connected" || (account.simulated && configured)) ? (
               <a href={`/api/oauth/${provider}/start`} className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-black hover:bg-white/90">
                 {account.simulated ? `Connect real ${label} account` : "Reconnect"}
               </a>
@@ -157,9 +164,10 @@ function SocialCard({ provider, account }: { provider: SocialProvider; account: 
           </div>
         </div>
       ) : (
-        <div className="mt-4">
-          <a href={`/api/oauth/${provider}/start`} className="inline-block rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-black hover:bg-white/90">
-            Connect {label}
+        <div className="mt-4 space-y-3">
+          {phone ? <PhoneConnect provider={provider} label={label} deviceUrl={MOBILERUN_DEVICE_URL} /> : null}
+          <a href={`/api/oauth/${provider}/start`} className={phone ? "inline-block text-xs text-fg-2 underline underline-offset-2 hover:text-fg" : "inline-block rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-black hover:bg-white/90"}>
+            {phone ? `Or connect ${label} through its login page` : `Connect ${label}`}
             {configured ? "" : " (simulated)"}
           </a>
           {fallback ? <p className="mt-3 text-[11px] text-subtle">{fallback}</p> : null}

@@ -172,10 +172,15 @@ export async function saveBrand(_: StudioState, form: FormData): Promise<StudioS
   }
 }
 
-export async function finishOnboarding(): Promise<void> {
+export async function finishOnboarding(form?: FormData): Promise<void> {
   const { email } = await requireStudio();
+  const { safeNext } = await import("@/lib/auth-google");
+  const next = safeNext(form ? String(form.get("next") ?? "") : "");
+  const profile = await getProfile(email);
+  // Onboarding is done once the brand is captured; without it the desk can't write for you.
+  if (!(profile.brand?.name || profile.brand?.description)) redirect(`/studio/onboarding?next=${encodeURIComponent(next)}&missing=brand`);
   await updateProfile(email, { onboardedAt: new Date() });
-  redirect("/studio");
+  redirect(next);
 }
 
 /* ── Voice: writing samples ────────────────────────────────────────────── */
@@ -336,6 +341,8 @@ export async function deleteMemory(form: FormData): Promise<void> {
 
 async function startJob(email: string, args: { subject: string; body: string; workflowId?: string | null; personaId?: string | null }) {
   const profile = await getProfile(email);
+  const { onboardingDone, onboardingPath } = await import("@/lib/studio/gate");
+  if (!onboardingDone(profile)) redirect(onboardingPath("/studio"));
   let body = args.body.trim();
   if (body.length < 40) body = `Write an article titled "${args.subject}". Draw on my knowledge base, voice profile and style guide.\n\n${body}`;
   const job = await createJob({ channel: "web", founderEmail: email, founderName: profile.displayName, subject: args.subject, body });

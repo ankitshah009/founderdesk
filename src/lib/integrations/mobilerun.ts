@@ -99,3 +99,73 @@ export function instagramPostTask(imageUrls: string[], slides: string[], caption
     "If anything blocks you (a login prompt, a verification screen, a dialog you cannot dismiss), stop and report it in problems with posted=false. Never post twice.",
   ].join("\n");
 }
+
+/* ── Social accounts on the phone ─────────────────────────────────────────── */
+
+export type PhonePlatform = "x" | "linkedin" | "instagram";
+
+const APP: Record<PhonePlatform, { app: string; profile: string; urlHint: string }> = {
+  x: { app: "X (Twitter)", profile: "tap your profile picture, then Profile", urlHint: "https://x.com/<handle>/status/<id>" },
+  linkedin: { app: "LinkedIn", profile: "tap your profile picture, then View profile", urlHint: "https://www.linkedin.com/feed/update/urn:li:activity:<id>/ or https://www.linkedin.com/posts/..." },
+  instagram: { app: "Instagram", profile: "tap the profile icon at the bottom right", urlHint: "https://www.instagram.com/p/<id>/" },
+};
+
+export const ACCOUNT_CHECK_SCHEMA = {
+  type: "object",
+  properties: {
+    signedIn: { type: "boolean", description: "An account is signed in to the app" },
+    handle: { type: ["string", "null"], description: "The signed-in account's handle or profile name exactly as shown" },
+    problems: { type: "array", items: { type: "string" } },
+  },
+  required: ["signedIn", "handle", "problems"],
+} as const;
+
+/** Read-only: confirm which account is signed in. Never posts, follows or changes anything. */
+export function accountCheckTask(p: PhonePlatform): string {
+  const a = APP[p];
+  return [
+    `Open the ${a.app} app on this phone.`,
+    `If it shows a sign-in screen, stop and report signedIn=false. Do not sign in or create an account.`,
+    `Otherwise ${a.profile} and read the account's handle (for example @name) or profile name exactly as shown.`,
+    "Report what you saw. Do not post, like, follow, message or change any setting.",
+  ].join("\n");
+}
+
+export const SOCIAL_POST_SCHEMA = {
+  type: "object",
+  properties: {
+    posted: { type: "boolean", description: "The post was published successfully" },
+    postUrl: { type: ["string", "null"], description: "The published post's link, from Share > Copy link" },
+    problems: { type: "array", items: { type: "string" } },
+  },
+  required: ["posted", "postUrl", "problems"],
+} as const;
+
+/** X: one post, or a thread where each post replies to the previous one. */
+export function xPostTask(posts: string[]): string {
+  return [
+    "Publish on X from the account already signed in to the X app on this phone. Do not sign in or out, and do not change settings.",
+    posts.length > 1 ? `Post this as a thread of ${posts.length} posts: write the first post, then tap 'Add' (+) to add each next post to the same thread before posting.` : "Write one post.",
+    ...posts.map((t, i) => `--- Post ${i + 1} (type exactly, including line breaks):\n${t}`),
+    "Tap Post once. Then open the first post you just published, tap Share, choose Copy link, and report that link as postUrl.",
+    "If anything blocks you (sign-in prompt, verification, a dialog you cannot dismiss), stop and report it in problems with posted=false. Never post twice.",
+  ].join("\n");
+}
+
+export function linkedinPostTask(text: string): string {
+  return [
+    "Publish a LinkedIn post from the account already signed in to the LinkedIn app on this phone. Do not sign in or out, and do not change settings.",
+    "Tap Post (or 'Start a post'), set visibility to Anyone, and type exactly this text, keeping the line breaks:",
+    text,
+    "Tap Post once. Then open the published post, tap the three dots or Share, choose Copy link to post, and report that link as postUrl.",
+    "If anything blocks you, stop and report it in problems with posted=false. Never post twice.",
+  ].join("\n");
+}
+
+export const POST_URL: Record<PhonePlatform, RegExp> = {
+  x: /^https:\/\/(www\.)?(x|twitter)\.com\/[^/]+\/status\/\d+/,
+  linkedin: /^https:\/\/(www\.)?linkedin\.com\/(feed\/update|posts)\//,
+  instagram: /^https:\/\/(www\.)?instagram\.com\/(p|reel)\//,
+};
+
+export const PHONE_APP = APP;
