@@ -199,7 +199,7 @@ export async function confirmSignInLink(form: FormData) {
 export async function signOutAction(form: FormData) {
   const { signOut } = await import("@/lib/auth");
   await signOut(form.get("everywhere") === "1");
-  redirect("/signin");
+  redirect("/");
 }
 
 /** Claim the free first article — only reachable from the emailed link. */

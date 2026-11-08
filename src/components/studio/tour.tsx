@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, GraduationCap, X } from "lucide-react";
 import { cn } from "@/components/ui";
 
-const DONE_KEY = "fd_studio_tour_v1";
+const SEEN_KEY = "fd_studio_tour_seen";
 
 export type TourStep = { title: string; body: string; target: string; href: string; cta: string; done: boolean };
 
 /**
  * The five-step guided tour of the Studio. It spotlights the sidebar item for
  * each step, says what it does in a sentence, and offers to do it now. Opens
- * on the first visit (until finished or skipped); "Take the tour" replays it.
+ * by itself on the Overview while setup is unfinished (once per browser
+ * session, so it doesn't reopen on every visit); "Tutorial" replays it.
  */
 export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart: boolean }) {
   const [open, setOpen] = useState(false);
@@ -26,7 +27,7 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
     };
     window.addEventListener("fd:tour", start);
     let t: ReturnType<typeof setTimeout> | undefined;
-    if (autoStart && !localStorage.getItem(DONE_KEY)) t = setTimeout(start, 600);
+    if (autoStart && !sessionStorage.getItem(SEEN_KEY)) t = setTimeout(start, 600);
     return () => {
       window.removeEventListener("fd:tour", start);
       clearTimeout(t);
@@ -44,18 +45,18 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
 
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(measure);
+    const timer = setTimeout(measure, 0);
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
     return () => {
-      cancelAnimationFrame(frame);
+      clearTimeout(timer);
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
   }, [open, measure]);
 
   const close = useCallback(() => {
-    localStorage.setItem(DONE_KEY, "1");
+    sessionStorage.setItem(SEEN_KEY, "1");
     setOpen(false);
   }, []);
 
@@ -133,8 +134,12 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
 
 export function TakeTourButton({ className }: { className?: string }) {
   return (
-    <button type="button" onClick={() => window.dispatchEvent(new Event("fd:tour"))} className={cn("text-xs text-muted underline-offset-2 hover:text-fg hover:underline", className)}>
-      Take the 1-minute tour
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("fd:tour"))}
+      className={cn("inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 text-sm text-fg-2 transition-colors hover:bg-white/[0.04] hover:text-fg", className)}
+    >
+      <GraduationCap className="size-4" aria-hidden /> Tutorial
     </button>
   );
 }

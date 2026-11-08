@@ -1,5 +1,9 @@
 import Link from "next/link";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
+import { currentSession } from "@/lib/auth";
+import { AccountMenu } from "./account-menu";
 import { Wordmark } from "./brand";
 import { ButtonLink } from "./ui";
 
@@ -17,12 +21,26 @@ export function Nav() {
           <Link href="/studio" className="hover:text-fg">Studio</Link>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/signin?next=/studio" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg">Sign in</Link>
-          <ButtonLink href="/signup" variant="secondary" className="max-sm:hidden">Sign up</ButtonLink>
+          <Suspense fallback={<span aria-hidden className="w-20" />}>
+            <Account />
+          </Suspense>
           <ButtonLink href="/start">Start an article</ButtonLink>
         </div>
       </div>
     </header>
+  );
+}
+
+/** Sign in / sign up when signed out; the account menu (with Log out) when signed in. */
+async function Account() {
+  await connection();
+  const session = await currentSession();
+  if (session) return <AccountMenu email={session.email} />;
+  return (
+    <>
+      <Link href="/signin?next=/studio" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg">Sign in</Link>
+      <ButtonLink href="/signup" variant="secondary" className="max-sm:hidden">Sign up</ButtonLink>
+    </>
   );
 }
 
