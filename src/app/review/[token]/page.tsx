@@ -9,6 +9,7 @@ import { IN_PROGRESS, StageChip } from "@/components/stages";
 import { ButtonLink, Chip, MonoLabel } from "@/components/ui";
 import { articleSlug } from "@/lib/brief";
 import { connectedSocial } from "@/lib/destinations/social";
+import { instagramConnected } from "@/lib/workflow/publish";
 import { links } from "@/lib/links";
 import { verifyLink } from "@/lib/security";
 import { orderView } from "@/lib/views";
@@ -124,6 +125,25 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
                 </ol>
               </div>
             ) : null}
+            {draft.variants.newsletter ? (
+              <div className="rounded-xl border border-line bg-panel p-5">
+                <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">Newsletter · copy and send</p>
+                <p className="text-sm font-semibold text-fg">{draft.variants.newsletter.subject}</p>
+                <p className="mt-0.5 text-xs text-muted">{draft.variants.newsletter.preview}</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-fg-2">{draft.variants.newsletter.body.replace("{{url}}", web?.url ?? links.article(articleSlug(draft.title, job.id)))}</p>
+              </div>
+            ) : null}
+            {draft.variants.instagram ? (
+              <div className="rounded-xl border border-line bg-panel p-5">
+                <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">Instagram carousel · {draft.variants.instagram.slides.length} slides</p>
+                <ol className="flex gap-2 overflow-x-auto pb-1">
+                  {draft.variants.instagram.slides.map((t, i) => (
+                    <li key={i} className="flex aspect-square w-32 shrink-0 items-end rounded-lg bg-white/[0.05] p-2.5 text-xs leading-snug text-fg">{t}</li>
+                  ))}
+                </ol>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-fg-2">{draft.variants.instagram.caption}</p>
+              </div>
+            ) : null}
             {draft.variants.linkedin ? (
               <div className="rounded-xl border border-line bg-panel p-5">
                 <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">LinkedIn</p>
@@ -145,7 +165,7 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
             <>
               <p className="text-sm text-fg">Approve this version</p>
               <p className="mt-1 mb-5 text-xs text-muted">Read it through. Nothing is published until you approve.</p>
-              <ApprovePanel token={token} draftId={draft.id} contentHash={draft.contentHash} destination={links.article(articleSlug(draft.title, job.id))} social={connectedSocial().map((a) => ({ id: a.id, label: a.label }))} />
+              <ApprovePanel token={token} draftId={draft.id} contentHash={draft.contentHash} destination={links.article(articleSlug(draft.title, job.id))} readyImages={jobImages.filter((i) => i.status === "ready").map((i, idx, arr) => ({ id: i.id, slot: i.slot, preselected: arr.findIndex((j) => j.slot === i.slot) === idx }))} social={[...connectedSocial().map((a) => ({ id: a.id as string, label: a.label })), ...(instagramConnected() ? [{ id: "instagram", label: "Instagram (via Mobile Run)" }] : [])]} />
               <div className="mt-3">
                 <EditPanel token={token} draftId={draft.id} draft={draft} />
               </div>

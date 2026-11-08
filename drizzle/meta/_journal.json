@@ -64,6 +64,13 @@
       "when": 1794105269705,
       "tag": "0008_images_optin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794105628087,
+      "tag": "0009_approval_images",
+      "breakpoints": true
     }
   ]
 }

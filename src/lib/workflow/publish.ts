@@ -1,7 +1,8 @@
-import { and, desc, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { approvals, drafts, jobs, publications, type Dispatch, type Job, type MobileCheck, type Publication } from "@/lib/db/schema";
-import { isLive } from "@/lib/env";
+import { approvals, drafts, images, jobs, publications, type Dispatch, type Job, type MobileCheck, type Publication } from "@/lib/db/schema";
+import { env, isLive } from "@/lib/env";
 import { SOCIAL, renderAnnouncement, type SocialDestination } from "@/lib/destinations/social";
 import * as mobilerun from "@/lib/integrations/mobilerun";
 import { articleSlug } from "@/lib/brief";
@@ -13,9 +14,28 @@ import { enqueue, getJob, latestDraft, reviewForDraft, transition } from "./stor
 
 export class GateError extends Error {}
 
+/** Instagram posting runs on the Mobile Run phone where the account is signed in. */
+export function instagramConnected(): boolean {
+  return isLive("mobilerun") && env().INSTAGRAM_VIA_MOBILERUN === "true";
+}
+
 /* ── Founder actions (called from the review page and MCP) ─────────────────── */
 
-export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread" }) {
+/** sha256 over the chosen images' ids and bytes, in order. Empty selection → null. */
+export async function hashImages(jobId: string, ids: string[]): Promise<string | null> {
+  if (!ids.length) return null;
+  const db = await getDb();
+  const rows = await db.select({ id: images.id, data: images.data, status: images.status }).from(images).where(and(eq(images.jobId, jobId), inArray(images.id, ids)));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const parts = ids.map((id) => {
+    const r = byId.get(id);
+    if (!r || r.status !== "ready" || !r.data) throw new GateError("One of the chosen images is no longer available. Reload the page.");
+    return `${id}:${createHash("sha256").update(r.data).digest("hex")}`;
+  });
+  return createHash("sha256").update(parts.join("\n")).digest("hex");
+}
+
+export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread"; imageIds?: string[] }) {
   const job = await getJob(args.jobId);
   if (!job) throw new GateError("Order not found.");
   if (job.stage !== "READY_FOR_APPROVAL") throw new GateError("This article is not waiting for approval.");
@@ -25,8 +45,12 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
   const review = await reviewForDraft(draft.id);
   if (review?.outcome !== "READY_FOR_APPROVAL") throw new GateError("This version has not passed review.");
 
-  const allowed = new Set(["web", ...Object.values(SOCIAL).filter((a) => a.connected()).map((a) => a.id)]);
+  const allowed = new Set<string>(["web", ...Object.values(SOCIAL).filter((a) => a.connected()).map((a) => a.id)]);
+  if (instagramConnected()) allowed.add("instagram");
   const destinations = ["web", ...args.destinations.filter((d) => d !== "web" && allowed.has(d))];
+  const imageIds = [...new Set(args.imageIds ?? [])];
+  const imagesHash = await hashImages(job.id, imageIds);
+  if (destinations.includes("instagram") && !imageIds.length) throw new GateError("Choose at least one image to post to Instagram.");
   const db = await getDb();
   await db
     .insert(approvals)
@@ -38,6 +62,8 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
         destination,
         action: "publish" as const,
         option: destination === "x" ? (args.xFormat === "single" ? "single" : "thread") : null,
+        imageIds,
+        imagesHash,
         approvedBy: job.founderEmail,
       })),
     )
@@ -90,6 +116,13 @@ async function gate(job: Job, draftId: string, destination: string) {
     .limit(1);
   if (!approval) throw new PermanentError(`Gate: no approval for ${destination}.`);
   if (approval.contentHash !== draft.contentHash) throw new PermanentError("Gate: approval does not match the content.");
+  let imagesNow: string | null;
+  try {
+    imagesNow = await hashImages(draft.jobId, approval.imageIds);
+  } catch {
+    imagesNow = "missing";
+  }
+  if (imagesNow !== approval.imagesHash) throw new PermanentError("Gate: the approved images changed after approval.");
   return { draft, approval };
 }
 
@@ -146,6 +179,34 @@ registerHandler("publish", {
       return { done: { publicationId: pub.id, url: pub.url, verification } };
     }
 
+    if (destination === "instagram") {
+      if (!instagramConnected()) throw new PermanentError("Instagram is not connected on the Mobile Run device");
+      const web = await webPublication(job.id);
+      if (web?.status !== "published") throw new Error("Waiting for the web article to be published");
+      const ig = draft.variants.instagram;
+      if (!ig) throw new PermanentError("This draft has no Instagram version");
+      const imgs = approval.imageIds.map((id) => ({ id }));
+      if (!imgs.length) throw new PermanentError("Instagram needs at least one image — add images before approving Instagram");
+      const [existing] = await db.select().from(publications).where(and(eq(publications.jobId, job.id), eq(publications.destination, "instagram"))).limit(1);
+      if (existing?.status === "published") return { done: { publicationId: existing.id, url: existing.url } };
+      if (existing && !existing.externalId) {
+        throw new PermanentError("An earlier Instagram post attempt may have gone through. Check the account before retrying.");
+      }
+      const base = links.article("").replace(/\/a\/$/, "");
+      const [row] = await db
+        .insert(publications)
+        .values({ jobId: job.id, draftId: draft.id, approvalId: approval.id, destination, contentHash: draft.contentHash, status: "publishing" })
+        .returning();
+      const task = await mobilerun.runTask({
+        task: mobilerun.instagramPostTask(imgs.slice(0, 10).map((i) => `${base}/api/images/${i.id}`), ig.slides, ig.caption),
+        idempotencyKey: idempotencyKey(d),
+        outputSchema: mobilerun.INSTAGRAM_POST_SCHEMA,
+        maxSteps: 80,
+      });
+      await db.update(publications).set({ externalId: `mobilerun:${task.id}` }).where(eq(publications.id, row!.id));
+      return { started: task.id, provider: "mobilerun" };
+    }
+
     // Social announcement: needs the live article URL first.
     const adapter = SOCIAL[destination as SocialDestination];
     if (!adapter?.connected()) throw new PermanentError(`${destination} is not connected`);
@@ -179,10 +240,27 @@ registerHandler("publish", {
     await db.update(publications).set({ verification, status: check.ok ? "published" : "verify_failed" }).where(eq(publications.id, row!.id));
     return { done: { publicationId: row!.id, url: posted.url, verification } };
   },
+  pollEveryMs: 10_000,
+  // Only Instagram (via Mobile Run) is asynchronous: wait for the phone task.
+  async poll(d) {
+    const s = await mobilerun.getTaskStatus(d.providerRef!);
+    if (!mobilerun.TERMINAL_TASK.has(s.status)) return { running: true };
+    const o = (s.output ?? {}) as { posted?: boolean; postUrl?: string | null; problems?: string[] };
+    // A finished task is not a post: require success and a real post link.
+    if (s.status === "completed" && o.posted && o.postUrl && /^https:\/\/(www\.)?instagram\.com\/(p|reel)\//.test(o.postUrl)) return { done: { postUrl: o.postUrl } };
+    return { failed: `Instagram post not confirmed: ${o.problems?.join("; ") || s.message || s.status}`, retryable: false };
+  },
   async complete(d, output) {
-    const out = output as { publicationId: string; url: string };
+    const out = output as { publicationId: string; url: string; postUrl?: string };
     const destination = String(d.input.destination);
     const db = await getDb();
+    if (destination === "instagram" && out.postUrl) {
+      await db
+        .update(publications)
+        .set({ status: "published", url: out.postUrl, verification: { ok: true, checkedAt: new Date().toISOString(), detail: "Post link reported by the phone agent after sharing" } })
+        .where(and(eq(publications.jobId, d.jobId), eq(publications.destination, "instagram")));
+      return;
+    }
     if (destination !== "web") return;
     await db.update(publications).set({ status: "published" }).where(eq(publications.id, out.publicationId));
     const job = await transition(d.jobId, ["PUBLISHING"], "PUBLISHED");

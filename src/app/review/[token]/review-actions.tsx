@@ -10,10 +10,11 @@ type Props = {
   contentHash: string;
   destination: string;
   social: Array<{ id: string; label: string }>;
+  readyImages?: Array<{ id: string; slot: string; preselected: boolean }>;
   draft: { title: string; dek: string; bodyMarkdown: string; announcement: string };
 };
 
-export function ApprovePanel({ token, draftId, contentHash, destination, social }: Omit<Props, "draft">) {
+export function ApprovePanel({ token, draftId, contentHash, destination, social, readyImages = [] }: Omit<Props, "draft">) {
   const [state, action, pending] = useActionState<ActionState, FormData>(approveArticle, null);
   if (state?.ok) {
     return (
@@ -55,6 +56,23 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social 
           </div>
         ))}
       </fieldset>
+      {readyImages.length ? (
+        <fieldset className="space-y-2 text-sm">
+          <legend className="mb-2 text-xs text-muted">Images to publish (unticked images stay private)</legend>
+          <div className="grid grid-cols-3 gap-2">
+            {readyImages.map((img) => (
+              <label key={img.id} className="relative block cursor-pointer overflow-hidden rounded-lg border border-line has-[:checked]:border-accent">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/images/${img.id}`} alt="" className="aspect-[3/2] w-full object-cover" />
+                <span className="flex items-center gap-1.5 px-1.5 py-1 text-[11px] text-fg-2">
+                  <input type="checkbox" name="imageIds" value={img.id} defaultChecked={img.preselected} className="accent-white" />
+                  <span className="truncate">{img.slot === "hero" ? "Header" : img.slot}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       {state?.error ? (
         <p role="alert" className="rounded-lg border border-red/30 bg-red/10 px-3 py-2 text-sm text-red">
           {state.error}
@@ -63,7 +81,7 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social 
       <Button type="submit" disabled={pending} className="w-full py-2">
         {pending ? "Approving…" : "Approve and publish this version"}
       </Button>
-      <p className="text-xs leading-relaxed text-subtle">Your approval is recorded against this exact version (sha256 {contentHash.slice(0, 10)}…) and these destinations.</p>
+      <p className="text-xs leading-relaxed text-subtle">Your approval is recorded against this exact version (sha256 {contentHash.slice(0, 10)}…) and these destinations, plus the images you ticked.</p>
     </form>
   );
 }

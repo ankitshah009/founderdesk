@@ -56,6 +56,8 @@ const schema = z.object({
   MOBILERUN_API_KEY: optional,
   MOBILERUN_BASE_URL: z.string().url().default("https://api.mobilerun.ai/v1"),
   MOBILERUN_DEVICE_ID: optional,
+  /** Set to "true" once Instagram is signed in on the Mobile Run device. */
+  INSTAGRAM_VIA_MOBILERUN: optional,
 
   X_USER_ACCESS_TOKEN: optional,
   LINKEDIN_ACCESS_TOKEN: optional,

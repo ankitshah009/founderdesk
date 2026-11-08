@@ -58,6 +58,7 @@ export async function approveArticle(_: ActionState, form: FormData): Promise<Ac
       contentHash: String(form.get("contentHash")),
       destinations: form.getAll("destinations").map(String),
       xFormat: form.get("xFormat") === "single" ? "single" : "thread",
+      imageIds: form.getAll("imageIds").map(String),
     });
   } catch (err) {
     if (err instanceof GateError) return { error: err.message };

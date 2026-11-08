@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getDb, resetDbForTests } from "@/lib/db/client";
-import { dispatches, drafts, jobs, outboundMessages, publications, reviews } from "@/lib/db/schema";
+import { approvals, dispatches, drafts, jobs, outboundMessages, publications, reviews } from "@/lib/db/schema";
 import { approveDraft, GateError, submitFounderEdit } from "@/lib/workflow/publish";
 import { persistEvent, processInboundEvent } from "@/lib/workflow/intake";
 import { fulfillPayment } from "@/lib/workflow/payments";
@@ -281,11 +281,66 @@ describe("X format choice", () => {
     await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
     const { destinations } = await approveDraft({ jobId: job.id, draftId: d!.id, contentHash: "hx", destinations: ["x"], xFormat: "single" });
     expect(destinations).toEqual(["web", "x"]);
-    const { approvals } = await import("@/lib/db/schema");
     const rows = await db.select().from(approvals).where(eq(approvals.jobId, job.id));
     expect(rows.find((r) => r.destination === "x")!.option).toBe("single");
     expect(rows.find((r) => r.destination === "web")!.option).toBeNull();
     delete process.env.X_USER_ACCESS_TOKEN;
     resetEnvCache();
+  });
+});
+
+describe("approved images", () => {
+  async function readyWithImages(tag: string) {
+    stubPublicWeb();
+    const { createJob } = await import("@/lib/workflow/intake");
+    const { images } = await import("@/lib/db/schema");
+    const db = await getDb();
+    const job = await createJob({ channel: "web", founderEmail: `${tag}@founder.test`, subject: tag, body: "I want to write about why approvals must cover images. My audience is founders." });
+    const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: `T ${tag}`, dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A", contentHash: `h-${tag}` }).returning();
+    await db.insert(reviews).values({ jobId: job.id, draftId: d!.id, outcome: "READY_FOR_APPROVAL", summary: "ok", findings: [] });
+    await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
+    const imgs = await db
+      .insert(images)
+      .values(["keep", "reject"].map((p) => ({ jobId: job.id, slot: "hero", prompt: p, status: "ready" as const, mime: "image/webp", data: Buffer.from(p) })))
+      .returning();
+    return { db, job, draft: d!, keep: imgs[0]!, reject: imgs[1]!, images };
+  }
+
+  it("records only the chosen images and binds their bytes into the approval", async () => {
+    const { db, job, draft, keep } = await readyWithImages("imgpick");
+    const { hashImages } = await import("@/lib/workflow/publish");
+    await approveDraft({ jobId: job.id, draftId: draft.id, contentHash: draft.contentHash, destinations: [], imageIds: [keep.id] });
+    const [a] = await db.select().from(approvals).where(eq(approvals.jobId, job.id));
+    expect(a!.imageIds).toEqual([keep.id]);
+    expect(a!.imagesHash).toBe(await hashImages(job.id, [keep.id]));
+    await runWork({ budgetMs: 8_000 });
+    const [pub] = await db.select().from(publications).where(eq(publications.jobId, job.id));
+    expect(pub?.status).toBe("published");
+  });
+
+  it("refuses to publish when an approved image changes after approval", async () => {
+    const { db, job, draft, keep, images } = await readyWithImages("imgswap");
+    await approveDraft({ jobId: job.id, draftId: draft.id, contentHash: draft.contentHash, destinations: [], imageIds: [keep.id] });
+    await db.update(images).set({ data: Buffer.from("swapped") }).where(eq(images.id, keep.id));
+    await runWork({ budgetMs: 8_000 });
+    const pubs = await db.select().from(publications).where(eq(publications.jobId, job.id));
+    expect(pubs.some((p) => p.status === "published")).toBe(false);
+  });
+
+  it("rejects Instagram approval without a chosen image", async () => {
+    const { job, draft } = await readyWithImages("imgig");
+    process.env.MOBILERUN_API_KEY = "k";
+    process.env.MOBILERUN_DEVICE_ID = "d";
+    process.env.INSTAGRAM_VIA_MOBILERUN = "true";
+    const { resetEnvCache } = await import("@/lib/env");
+    resetEnvCache();
+    try {
+      await expect(approveDraft({ jobId: job.id, draftId: draft.id, contentHash: draft.contentHash, destinations: ["instagram"], imageIds: [] })).rejects.toBeInstanceOf(GateError);
+    } finally {
+      delete process.env.MOBILERUN_API_KEY;
+      delete process.env.MOBILERUN_DEVICE_ID;
+      delete process.env.INSTAGRAM_VIA_MOBILERUN;
+      resetEnvCache();
+    }
   });
 });

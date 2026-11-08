@@ -268,11 +268,12 @@ function Steps() {
   );
 }
 
-type ChannelStatus = "live" | "connect" | "soon";
+type ChannelStatus = "live" | "connect" | "copy" | "phone";
 const STATUS: Record<ChannelStatus, { label: string; dot: string }> = {
   live: { label: "Live", dot: "bg-green" },
   connect: { label: "Connect your account", dot: "bg-amber" },
-  soon: { label: "Coming soon", dot: "bg-white/30" },
+  copy: { label: "Written for you · copy and send", dot: "bg-green" },
+  phone: { label: "Connect your account on Mobile Run", dot: "bg-amber" },
 };
 
 function Avatar() {
@@ -331,7 +332,7 @@ function SocialPreview({ network, dim }: { network: "x" | "linkedin"; dim?: bool
 
 function NewsletterPreview() {
   return (
-    <PreviewFrame dim>
+    <PreviewFrame>
       <p className="text-[11px] text-subtle">From: Dana at Northwind</p>
       <p className="mt-1 text-[13px] font-semibold text-fg">Subject: The 60% fix we almost skipped</p>
       <div className="mt-3 space-y-1.5">
@@ -346,7 +347,7 @@ function NewsletterPreview() {
 
 function CarouselPreview() {
   return (
-    <PreviewFrame dim>
+    <PreviewFrame>
       <div className="flex h-full gap-2">
         {["Start narrow.", "60% faster replies", "Resets → refunds → rest"].map((t, i) => (
           <div key={t} className={cn("flex w-28 shrink-0 items-end rounded-xl p-2.5 text-[12px] font-semibold leading-tight", i === 0 ? "bg-[linear-gradient(160deg,#ff5a1f,#c21e33)] text-fg" : "bg-white/6 text-fg-2")}>
@@ -362,8 +363,8 @@ const CHANNELS: Array<{ key: string; name: string; title: string; body: string; 
   { key: "web", name: "Web article", title: "A full article, with the receipts", body: "Your voice, a source beside every claim, verified live and checked on a phone.", status: "live", preview: <ArticlePreview />, span: "md:col-span-2" },
   { key: "x", name: "X", title: "A post with a real hook", body: "One idea, a strong first line, a link back.", status: "connect", preview: <SocialPreview network="x" /> },
   { key: "li", name: "LinkedIn", title: "Posts that sound like you", body: "Read back by ID before we call it published.", status: "connect", preview: <SocialPreview network="linkedin" /> },
-  { key: "nl", name: "Newsletter", title: "An issue ready to send", body: "A subject line and a tight issue pointing to the piece.", status: "soon", preview: <NewsletterPreview /> },
-  { key: "ig", name: "Instagram", title: "Carousels and captions", body: "Slide-by-slide copy from the approved article.", status: "soon", preview: <CarouselPreview /> },
+  { key: "nl", name: "Newsletter", title: "An issue ready to send", body: "Subject line, preview text and a short issue, written and checked with the article.", status: "copy", preview: <NewsletterPreview /> },
+  { key: "ig", name: "Instagram", title: "Carousels and captions", body: "Slides and caption, posted from your own phone through Mobile Run.", status: "phone", preview: <CarouselPreview /> },
 ];
 
 function Channels() {

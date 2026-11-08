@@ -42,7 +42,7 @@ export function mobileCheckTask(url: string, headline: string): string {
   ].join("\n");
 }
 
-export async function runTask(args: { task: string; idempotencyKey: string }) {
+export async function runTask(args: { task: string; idempotencyKey: string; outputSchema?: Record<string, unknown>; maxSteps?: number }) {
   const { url, token, deviceId } = base();
   const { data } = await requestJson<{ id: string; status: string; streamUrl: string | null }>("mobilerun", `${url}/tasks`, {
     token,
@@ -50,8 +50,8 @@ export async function runTask(args: { task: string; idempotencyKey: string }) {
     body: {
       task: args.task,
       deviceId,
-      outputSchema: MOBILE_CHECK_SCHEMA,
-      maxSteps: 40,
+      outputSchema: args.outputSchema ?? MOBILE_CHECK_SCHEMA,
+      maxSteps: args.maxSteps ?? 40,
       executionTimeout: 600,
       vision: true,
       recordingEnabled: true,
@@ -76,3 +76,26 @@ export async function getTaskStatus(id: string): Promise<TaskStatus> {
 }
 
 export const TERMINAL_TASK = new Set(["completed", "failed", "cancelled"]);
+
+export const INSTAGRAM_POST_SCHEMA = {
+  type: "object",
+  properties: {
+    posted: { type: "boolean", description: "The carousel post was published successfully" },
+    postUrl: { type: ["string", "null"], description: "The post's link, from Share > Copy link (https://www.instagram.com/p/...)" },
+    problems: { type: "array", items: { type: "string" } },
+  },
+  required: ["posted", "postUrl", "problems"],
+} as const;
+
+export function instagramPostTask(imageUrls: string[], slides: string[], caption: string): string {
+  return [
+    "Publish an Instagram carousel post from the Instagram account that is already signed in on this phone. Do not sign in or out, and do not change any settings.",
+    "1. In Chrome, open each image URL below in order and save each image to the gallery (long-press the image, then Download image):",
+    ...imageUrls.map((u, i) => `   ${i + 1}. ${u}`),
+    "2. Open Instagram, tap + to create a new post, choose 'Select multiple', and select those images in the same order.",
+    `3. Use this caption exactly:\n${caption}`,
+    `4. (For reference, the slide text is: ${slides.join(" | ")})`,
+    "5. Share the post. Then open it, tap the three dots or Share, choose Copy link, and report that link as postUrl.",
+    "If anything blocks you (a login prompt, a verification screen, a dialog you cannot dismiss), stop and report it in problems with posted=false. Never post twice.",
+  ].join("\n");
+}

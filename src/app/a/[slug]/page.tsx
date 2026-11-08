@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { Mark } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
 import { getDb } from "@/lib/db/client";
-import { drafts, images, jobs, publications, sources } from "@/lib/db/schema";
+import { approvals, drafts, images, jobs, publications, sources } from "@/lib/db/schema";
 
 export default function ArticlePage(props: PageProps<"/a/[slug]">) {
   return (
@@ -29,9 +29,15 @@ async function load(slug: string) {
     db.select().from(drafts).where(eq(drafts.id, pub.draftId)).limit(1),
     db.select({ founderName: jobs.founderName, audience: jobs.audience }).from(jobs).where(eq(jobs.id, pub.jobId)).limit(1),
     db.select().from(sources).where(eq(sources.jobId, pub.jobId)),
-    db.select({ id: images.id, slot: images.slot }).from(images).where(and(eq(images.jobId, pub.jobId), eq(images.status, "ready"))),
+    pub.approvalId ? db.select({ imageIds: approvals.imageIds }).from(approvals).where(eq(approvals.id, pub.approvalId)).limit(1) : Promise.resolve([]),
   ]);
-  return { pub, draft: draft!, job: job!, sources: srcs, images: imgs };
+  // Only the images the founder chose at approval, in the order chosen.
+  const chosen = imgs[0]?.imageIds ?? [];
+  const rows = chosen.length
+    ? await db.select({ id: images.id, slot: images.slot }).from(images).where(and(inArray(images.id, chosen), eq(images.status, "ready")))
+    : [];
+  const ordered = chosen.map((id) => rows.find((r) => r.id === id)).filter((r): r is { id: string; slot: string } => !!r);
+  return { pub, draft: draft!, job: job!, sources: srcs, images: ordered };
 }
 
 async function Article({ params }: PageProps<"/a/[slug]">) {

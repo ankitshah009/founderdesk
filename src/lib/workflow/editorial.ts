@@ -35,6 +35,8 @@ export const draftOutputSchema = z.object({
       x: z.array(z.string().min(1).max(280)).min(1).max(6),
       xSingle: z.string().min(10).max(280),
       linkedin: z.string().min(40).max(3000),
+      newsletter: z.object({ subject: z.string().min(5).max(90), preview: z.string().max(140), body: z.string().min(80).max(4000) }),
+      instagram: z.object({ slides: z.array(z.string().min(2).max(140)).min(3).max(10), caption: z.string().min(20).max(2200) }),
     })
     .partial()
     .optional(),
@@ -143,7 +145,7 @@ export function writePrompt(args: {
     args.previousBody ? `Previous draft:\n${args.previousBody}` : "",
     `Available source references: ${args.sources.filter((s) => s.status === "fetched").map((s) => s.ref).join(", ")}`,
     "Also write a short announcement (under 260 characters, ending with {{url}}) and list every factual claim with its source references. List significant corrections you made relative to the founder's notes.",
-    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}, then a final line of 3–5 specific, relevant hashtags (e.g. #SaaS #CustomerSupport), never generic ones like #success or #motivation.",
+    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}, then a final line of 3–5 specific, relevant hashtags (e.g. #SaaS #CustomerSupport), never generic ones like #success or #motivation. `newsletter` is { subject (under 60 characters, specific), preview (one line), body (a short issue in the founder's voice ending with {{url}}) }. `instagram` is { slides: 5–8 slides of at most 20 words each, one idea per slide, first slide a hook, last slide 'Full article: link in bio'; caption: 2–4 short lines plus 3–5 specific hashtags }.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -151,7 +153,7 @@ export function writePrompt(args: {
 
 export function reviewPrompt(args: {
   job: Job;
-  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: { x?: string[]; linkedin?: string } };
+  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: import("@/lib/db/schema").ChannelVariants };
   sources: SourceView[];
   priorFindings: Finding[];
 }): string {
@@ -261,7 +263,7 @@ export function resolveFigureFinding(finding: Finding, replies: FounderReply[]):
 
 export type GuardrailContext = {
   job: Job;
-  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: { x?: string[]; xSingle?: string; linkedin?: string } };
+  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: import("@/lib/db/schema").ChannelVariants };
   sources: SourceView[];
   revisionCycles: number;
   maxRevisionCycles: number;
@@ -273,7 +275,15 @@ const fid = (kind: string) => `${kind}-${Date.now().toString(36)}-${(findingSeq+
 export function runGuardrails(ctx: GuardrailContext): Finding[] {
   const { job, draft, sources } = ctx;
   const findings: Finding[] = [];
-  const variantText = [...(draft.variants?.x ?? []), draft.variants?.xSingle ?? "", draft.variants?.linkedin ?? ""].join("\n\n");
+  const v = draft.variants;
+  const variantText = [
+    ...(v?.x ?? []),
+    v?.xSingle ?? "",
+    v?.linkedin ?? "",
+    v?.newsletter ? `${v.newsletter.subject}\n${v.newsletter.body}` : "",
+    ...(v?.instagram?.slides ?? []),
+    v?.instagram?.caption ?? "",
+  ].join("\n\n");
   const everything = `${draft.title}\n${draft.dek}\n${draft.bodyMarkdown}\n${draft.announcement}\n${variantText}`;
 
   // 1. Publication boundaries: private names must never ship.
@@ -571,6 +581,20 @@ export function localWrite(args: {
       `The full piece, with a source beside every claim: {{url}}`,
     ],
     xSingle: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}. What the evidence supports, and where it stops: {{url}}`.slice(0, 280),
+    newsletter: {
+      subject: sentenceCase(thesis.replace(/^why\s+/i, "")).slice(0, 60),
+      preview: `What the evidence supports, and where it stops.`,
+      body: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\n${lead}.\n\nI wrote up what the evidence supports, with a source beside every claim, for ${audience}.\n\nRead the full piece: {{url}}`,
+    },
+    instagram: {
+      slides: [
+        sentenceCase(thesis.replace(/^why\s+/i, "")).split(" ").slice(0, 14).join(" "),
+        ...observations.slice(0, 3).map((o) => withoutCitations(o).split(" ").slice(0, 18).join(" ")),
+        "What the evidence supports, and where it stops.",
+        "Full article: link in bio",
+      ].filter(Boolean).slice(0, 8),
+      caption: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\nFull article: link in bio.\n\n${hashtagsFor(`${job.topic} ${job.thesis ?? ""} ${audience}`).join(" ")}`,
+    },
     linkedin: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\n${lead}.\n\nI wrote up what the evidence supports, and where it stops, for ${audience}.\n\nWhat would you add?\n\n{{url}}\n\n${hashtagsFor(`${job.topic} ${job.thesis ?? ""} ${audience}`).join(" ")}`.slice(0, 3000),
   };
   const draft: DraftOutput = {
@@ -580,7 +604,13 @@ export function localWrite(args: {
     announcement: `New essay: ${scrubPrivate(title, job.privateTerms)}. Sourced, reviewed, and published. {{url}}`.slice(0, 280),
     claims,
     corrections,
-    variants: { x: variants.x.map((t) => scrubPrivate(t, job.privateTerms)), xSingle: scrubPrivate(variants.xSingle, job.privateTerms), linkedin: scrubPrivate(variants.linkedin, job.privateTerms) },
+    variants: {
+      x: variants.x.map((t) => scrubPrivate(t, job.privateTerms)),
+      xSingle: scrubPrivate(variants.xSingle, job.privateTerms),
+      linkedin: scrubPrivate(variants.linkedin, job.privateTerms),
+      newsletter: { subject: scrubPrivate(variants.newsletter.subject, job.privateTerms), preview: variants.newsletter.preview, body: scrubPrivate(variants.newsletter.body, job.privateTerms) },
+      instagram: { slides: variants.instagram.slides.map((t) => scrubPrivate(t, job.privateTerms)), caption: scrubPrivate(variants.instagram.caption, job.privateTerms) },
+    },
   };
   return draft;
 }

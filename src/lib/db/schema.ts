@@ -63,7 +63,13 @@ export type Finding = {
 export type Claim = { text: string; sourceIds: string[] };
 
 /** Platform-native versions of the announcement, written and approved per channel. */
-export type ChannelVariants = { x?: string[]; xSingle?: string; linkedin?: string };
+export type ChannelVariants = {
+  x?: string[];
+  xSingle?: string;
+  linkedin?: string;
+  newsletter?: { subject: string; preview: string; body: string };
+  instagram?: { slides: string[]; caption: string };
+};
 
 export const jobs = pgTable(
   "jobs",
@@ -192,6 +198,9 @@ export const approvals = pgTable(
     action: text("action").$type<"publish">().notNull(),
     /** Destination-specific choice made at approval, e.g. X "single" or "thread". */
     option: text("option"),
+    /** Images the founder chose at approval, in display order, and a hash of their bytes. */
+    imageIds: jsonb("image_ids").$type<string[]>().notNull().default([]),
+    imagesHash: text("images_hash"),
     approvedBy: text("approved_by").notNull(),
     approvedAt: timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
   },
