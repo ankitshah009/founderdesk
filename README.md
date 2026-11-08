@@ -1,21 +1,74 @@
 # FounderDesk
 
-**Email your notes. Approve the exact article.**
-A founder emails notes, a report and a few links. FounderDesk takes payment, researches the argument, writes it in the founder's voice, holds every number and scope to its source, asks the founder by email when only they can answer, publishes only the version they approved, then verifies the live page and checks it on a phone.
+**Your notes in. A week of founder content out.**
+Drop in rough notes, a voice memo or just your website. FounderDesk understands your domain expertise, researches the argument, writes it in your voice, holds every number to its source, and turns the approved article into a blog post, newsletter, X thread, LinkedIn post and Instagram carousel. It publishes only the exact version you approved, verifies the live page, and posts from your own accounts through a real phone.
 
+Built by **Ankit, Amy and Megan**. Live at **[founderdesk.vercel.app](https://founderdesk.vercel.app)**. First article free.
+
+**Proof it runs end to end:** [this post on X](https://x.com/Aubric_Inc/status/2119500912993423635) was published autonomously by a Mobile Run phone, and its link was read back and verified before it counted as published.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph IN[Inputs]
+    W[Web app<br/>/start · Studio]
+    E[Email<br/>AgentMail inbox]
+    M[MCP server<br/>agents & tools]
+  end
+
+  subgraph CORE[Core · Next.js on Vercel]
+    D[Dispatch engine<br/>leased, retry-safe jobs<br/>cron every minute + after-response kick]
+    N[(Neon Postgres<br/>jobs · sources · evidence · drafts<br/>reviews · approvals · publications<br/>dispatches · outbound mail)]
+  end
+
+  subgraph AGENTS[Agents & checks]
+    NA[Naïve agents<br/>researcher · writer · reviewer]
+    MO[Monid<br/>search · page fetch]
+    OA[OpenAI<br/>voice memos · images · idea suggestions]
+    G[Deterministic checks<br/>figures · scope · privacy<br/>citations · style · per-platform format]
+  end
+
+  GATE{{Approval gate<br/>exact version · SHA-256 hash<br/>images · destinations · schedule}}
+
+  subgraph OUT[Outputs]
+    WA[Web article<br/>fetched back & verified]
+    PH[Mobile Run phones<br/>X · LinkedIn · Instagram<br/>+ phone layout check]
+    EM[Email updates<br/>AgentMail]
+  end
+
+  subgraph PLATFORM[Platform]
+    WO[WorkOS<br/>sign-in]
+    ST[Stripe<br/>payments · FIRST100 promo]
+  end
+
+  W & E & M --> D
+  D <--> N
+  D <--> NA & MO & OA
+  NA --> G --> GATE
+  GATE --> WA --> PH
+  GATE --> EM
+  WO -.-> W
+  ST -.-> D
 ```
-Founder ──▶ AgentMail ◀──▶ App backend + MCP ◀──▶ Neon (state & evidence)
-   └──▶ Stripe Checkout ─ payment event ─▶ │ ──▶ Naïve editorial agents (researcher · writer · reviewer)
-                                           │ ◀─▶ Monid research tools (search · page extraction)
-                                           └──▶ Founder approval page ─▶ Live web issue ─▶ Mobile Run check ─▶ back to backend
-```
+
+| Layer | What it does | Where |
+|---|---|---|
+| Inputs | Founders start from the one-box composer (notes, links, website, voice), by email, or from an MCP client | `src/app/start`, `src/app/api/webhooks/agentmail`, `src/app/api/mcp` |
+| Dispatch engine | Every step is a durable job: leased with `FOR UPDATE SKIP LOCKED`, idempotent request keys, compare-and-set stage changes | `src/lib/workflow/engine.ts`, `run.ts` |
+| Record | Neon is the source of truth; nothing depends on an agent's chat history | `src/lib/db/schema.ts`, `drizzle/` |
+| Agents | Naïve sessions with structured outputs; Monid for search and fetch; OpenAI for transcription, images and idea suggestions | `src/lib/workflow/handlers.ts`, `src/lib/integrations/*`, `src/lib/ideas.ts` |
+| Checks | Deterministic guardrails can only make the reviewer stricter: figures, scope, privacy, citations, AI-slop style, per-platform format | `src/lib/workflow/editorial.ts`, `humanize.ts` |
+| Approval gate | Approval binds the version, its SHA-256 hash, chosen images, destinations and schedule | `src/lib/workflow/publish.ts` |
+| Outputs | Web article verified by fetching it back; Mobile Run phones post to X, LinkedIn and Instagram and must report a real post link; per-channel scheduling | `publish.ts`, `scheduler.ts`, `src/lib/integrations/mobilerun.ts` |
+| Platform | WorkOS sign-in (email code, Google, SSO) on our own screens; Stripe Checkout with the FIRST100 launch code | `src/lib/workos-headless.ts`, `src/lib/integrations/stripe.ts` |
 
 ## Run it
 
 ```bash
 pnpm install
 pnpm dev                    # http://localhost:3000 — no keys needed
-pnpm test                   # 26 tests, parallel across all cores, real Postgres via PGlite
+pnpm test                   # 140+ tests, parallel across all cores, real Postgres via PGlite
 pnpm build
 ```
 
@@ -56,11 +109,12 @@ Copy `.env.example` to `.env.local` and fill in what you have. Each integration 
 | AgentMail | `AGENTMAIL_API_KEY` | `pnpm setup:agentmail` creates the inbox + webhook, prints `AGENTMAIL_INBOX_ID` / `AGENTMAIL_WEBHOOK_SECRET` |
 | Naïve | `NAIVE_API_KEY` | agents are created on first use (idempotent) and stored in `app_settings` |
 | Monid | `MONID_API_KEY` | `pnpm setup:monid` runs discover → inspect; pick real endpoints, then `--try` them |
-| Mobile Run | `MOBILERUN_API_KEY`, `MOBILERUN_DEVICE_ID` | — |
-| X / LinkedIn | user token / token + author URN | optional announcement destinations |
+| Mobile Run | `MOBILERUN_API_KEY`, `MOBILERUN_DEVICE_ID` | founders sign in to X, LinkedIn and Instagram on the phone, then link them with **Check phone** on `/studio/connections` |
+| WorkOS | `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_COOKIE_PASSWORD` (32+ chars) | register `${APP_URL}/auth/callback` and `${APP_URL}/auth/oauth/callback`; enable Magic Auth and Google |
+| OpenAI | `OPENAI_API_KEY` | voice-memo transcription, images, idea suggestions |
 | MCP | `MCP_API_KEY` | see `/desk/connect` (Claude Code, Muse via `mcp-remote`) |
 
-Production also requires `APP_SECRET` (signs private links), `DESK_TOKEN` (operator desk) and `CRON_SECRET` (auth for the `/api/cron/tick` backstop). `vercel.json` runs it daily, which fits the Vercel Hobby plan; work still moves without it, because webhooks and open pages drive the queue. For a tighter backstop, point any external scheduler at `/api/cron/tick` with `Authorization: Bearer $CRON_SECRET`, or on Vercel Pro set the schedule back to `* * * * *`.
+Production also requires `APP_SECRET` (signs private links), `DESK_TOKEN` (operator desk) and `CRON_SECRET` (auth for the `/api/cron/tick` backstop). `vercel.json` runs the backstop every minute (Vercel Pro); after any action the app also keeps the order moving for about a minute, so steps and their emails land within seconds. On the Hobby plan, set it to daily and rely on webhooks and open pages to drive the queue.
 
 ## How it stays correct
 
@@ -86,7 +140,8 @@ App screens use Mobbin patterns Profound doesn't have: a document-plus-details-r
 ## Honest limits
 
 - **Simulated mode.** The local editorial engine is deterministic and template-shaped. It exists to exercise the workflow, not to write like an agent. Real prose comes from the Naïve agents.
-- **Integrations not yet run against live accounts.** The live AgentMail, Naïve, Monid, Mobile Run, X and LinkedIn clients follow their published API docs but have not been exercised against live accounts in this repo. Stripe and AgentMail webhook verification *is* tested with real signatures.
+- **What has run live.** Naïve, Monid, AgentMail, OpenAI, WorkOS, Stripe (sandbox) and Mobile Run have all run against live accounts; Mobile Run posted [this X post](https://x.com/Aubric_Inc/status/2119500912993423635) on its own. LinkedIn and Instagram posting through the phone use the same code path but haven't been run live yet.
+- **Email limits.** New AgentMail accounts may email 10 recipients in their first day and 25 in their first week; rate-limited mail stays queued and retries after the reset.
 - **AgentMail webhook payload.** Fields like `from` and `thread_id` are parsed defensively because the docs show them only partially. Confirm against a real delivery.
-- **TikTok and app posting via Mobile Run.** These are designed but deliberately not built: TikTok needs a video step and an app audit, and Mobile Run posting needs a tested account first.
+- **TikTok.** Designed but not built: it needs a video step and an app audit.
 - **Founder-supplied URLs.** They go through an SSRF guard (private, loopback and link-local addresses are refused), but DNS rebinding is not mitigated.
