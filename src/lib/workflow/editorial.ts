@@ -1,4 +1,4 @@
-import { isSoftFinding, STYLE_RULES, styleFindings } from "./humanize";
+import { FORMAT_RULES, INSIGHT_RULES, isSoftFinding, STYLE_RULES, styleFindings, variantDepthFindings } from "./humanize";
 import { z } from "zod";
 import { sentences } from "@/lib/extract";
 import type { Claim, Finding, FounderReply, Job, ReviewOutcome, Source } from "@/lib/db/schema";
@@ -33,7 +33,7 @@ export const draftOutputSchema = z.object({
   corrections: z.array(z.string()).max(20),
   variants: z
     .object({
-      x: z.array(z.string().min(1).max(280)).min(1).max(6),
+      x: z.array(z.string().min(1).max(280)).min(1).max(12),
       xSingle: z.string().min(10).max(280),
       linkedin: z.string().min(40).max(3000),
       newsletter: z.object({ subject: z.string().min(5).max(90), preview: z.string().max(140), body: z.string().min(80).max(4000) }),
@@ -147,7 +147,7 @@ export function writePrompt(args: {
     `Style (write like a person, not a model):\n${STYLE_RULES.map((r) => `- ${r}`).join("\n")}`,
     `Available source references: ${args.sources.filter((s) => s.status === "fetched").map((s) => s.ref).join(", ")}`,
     "Also write a short announcement (under 260 characters, ending with {{url}}) and list every factual claim with its source references. List significant corrections you made relative to the founder's notes.",
-    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}, then a final line of 3–5 specific, relevant hashtags (e.g. #SaaS #CustomerSupport), never generic ones like #success or #motivation. `newsletter` is { subject (under 60 characters, specific), preview (one line), body (a short issue in the founder's voice ending with {{url}}) }. `instagram` is { slides: 5–8 slides of at most 20 words each, one idea per slide, first slide a hook, last slide 'Full article: link in bio'; caption: 2–4 short lines plus 3–5 specific hashtags }.",
+    `Write platform-native versions in \`variants\`, using only claims the article makes. Each one must teach the reader something they did not know, not summarise the article.\n${INSIGHT_RULES.map((r) => `- ${r}`).join("\n")}\n\nFormats:\n${FORMAT_RULES.map((r) => `- ${r}`).join("\n")}`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -379,6 +379,7 @@ export function runGuardrails(ctx: GuardrailContext): Finding[] {
   }
   // 5. Humanizer: machine-sounding prose goes back for revision (never blocks).
   findings.push(...styleFindings(draft.bodyMarkdown, fid));
+  findings.push(...variantDepthFindings(draft.variants ?? {}, fid));
 
   const words = draft.bodyMarkdown.split(/\s+/).length;
   if (words < 180) {

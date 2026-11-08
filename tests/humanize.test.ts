@@ -55,3 +55,50 @@ describe("humanizer", () => {
     expect(decideOutcome({ agentOutcome: "READY_FOR_APPROVAL", findings, job, revisionCycles: 2, maxRevisionCycles: 2 }).outcome).toBe("READY_FOR_APPROVAL");
   });
 });
+
+import { variantDepthFindings } from "@/lib/workflow/humanize";
+
+describe("platform depth checks", () => {
+  // The real posts that read as thin on order 1F0DDDD2.
+  const thin = {
+    xSingle: "Features, launch timing and better products all get copied. Test for moats that compound with use before you bet on one. {{url}}",
+    x: [
+      "Features, launch timing and better products all get copied. The edges worth testing are the ones that compound with use.",
+      "Roger Martin's first test: does the customer get a real benefit, and what stops a rival from matching it?",
+      "Fab spent $40M on marketing and lost $90M in 2012. Compare acquisition cohorts before you call it a moat.",
+      "Data moats: one AI-vendor guide defines it as exclusive data. Test that claim before you bank on it. {{url}}",
+    ],
+    instagram: { slides: ["Features get copied.", "So how do you find a moat that lasts?", "Start with one question.", "Then ask what makes it harder to copy.", "Fab spent $40M.", "Compare cohorts.", "Full article: link in bio"], caption: "Most moat advice hands you a list. I would start with a test.\nFull article: link in bio.\n#StartupStrategy #Fab" },
+  };
+  const n = { i: 0 };
+  const fid = (k: string) => `${k}-${n.i++}`;
+
+  it("flags the thin thread, vague single post, short carousel and hedging", () => {
+    const kinds = variantDepthFindings(thin, fid).map((f) => f.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["depth_thin_x_thread", "depth_vague_x_post", "depth_thin_carousel", "depth_hedging"]));
+  });
+
+  it("checks platform mechanics: early links on X, LinkedIn fold and link position, IG caption link", () => {
+    const kinds = variantDepthFindings(
+      {
+        x: ["Hook with link {{url}}", "a", "b", "c", "d", "e {{url}}"],
+        linkedin: `${"A long opening line that keeps going well past the fold. ".repeat(5)}\nSecond line {{url}}\n${"Body text. ".repeat(150)}`,
+        instagram: { slides: Array.from({ length: 8 }, () => "One concrete point per slide with enough words here"), caption: "Read it here {{url}}" },
+      },
+      fid,
+    ).map((f) => f.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["depth_x_early_link", "depth_linkedin_fold", "depth_linkedin_early_link", "depth_ig_caption_link"]));
+  });
+
+  it("passes a platform-native set and never blocks publication", () => {
+    const good = {
+      xSingle: "Fab's ad-bought shoppers bought again less often than its first 10k users. Before calling growth a moat, compare repeat rate by cohort. {{url}}",
+      x: ["Fab raised $330M and sold for about $30M.", "Why: shoppers bought with ads came back less.", "Mechanism: discounts attract deal-seekers.", "Test 1: repeat-purchase rate by cohort.", "Test 2: referral share by cohort.", "How to apply: pull cohorts by channel, compare 90-day repeat rate, cut channels below your organic cohort.", "Takeaway: a moat shows up in cohorts first. {{url}}"],
+      linkedin: `Fab raised $330M and sold for about $30M.\nIts paid cohorts were the tell.\n\n${"We saw the same pattern in our own data and changed how we measure. ".repeat(20)}\n\n1. Compare repeat rate by cohort.\n2. Track referral share.\n3. Cut channels below organic.\n\nWhich cohort metric do you trust most?\n\n{{url}}\n\n#StartupStrategy #Growth #SaaS`,
+      instagram: { slides: Array.from({ length: 9 }, (_, i) => `Point ${i + 1}: one concrete step with a number like 90 days in it`), caption: "Fab raised $330M and sold for $30M. Here's the cohort test.\nSave this before your next board meeting.\n#StartupStrategy #Growth #SaaS" },
+    };
+    const f = variantDepthFindings(good, fid);
+    expect(f).toEqual([]);
+    expect(variantDepthFindings(thin, fid).every((x) => x.id.startsWith("style-"))).toBe(true);
+  });
+});
