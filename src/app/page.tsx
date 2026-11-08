@@ -29,7 +29,7 @@ export default function Home() {
         <section className="hairline-t">
           <div className="frame">
             <div className="px-4 pt-20 pb-12 md:px-12">
-              <SectionHead label="Inside a review" title="Every claim, held to its source." lede="Every step is recorded in Postgres, not in an agent's memory — so retries never double-charge, double-post or lose your answer." />
+              <SectionHead label="Inside a review" title="Every claim, held to its source." lede="Every step is recorded in Postgres, not in an agent's memory, so a retry can never charge twice, post twice, or lose your answer." />
             </div>
             <HowItWorks />
           </div>
@@ -59,7 +59,7 @@ function Hero() {
         <p className="text-xs font-semibold tracking-[0.18em] text-fg-2/80 uppercase">Research agent for founders</p>
         <h1 className="display mt-8 max-w-[15ch] text-fg">
           Drop in your notes.{" "}
-          <span className="text-gradient">We&apos;ll write the article you&apos;d sign.</span>
+          <span className="text-accent">We&apos;ll write the article you&apos;d sign.</span>
         </h1>
         <div className="mt-12 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
           <p className="max-w-lg text-lg leading-relaxed text-fg-2 md:text-xl">
@@ -137,7 +137,7 @@ function ProductShot() {
                   </div>
                   <div className="relative mt-8">
                     <div className="composer-glow absolute -top-6 left-1/2 h-8 w-3/4 -translate-x-1/2" aria-hidden />
-                    <div className="relative rounded-xl border border-line-strong bg-panel-2 px-4 py-3 text-sm text-subtle">Suggest an edit — it goes back through review…</div>
+                    <div className="relative rounded-xl border border-line-strong bg-panel-2 px-4 py-3 text-sm text-subtle">Suggest an edit. It goes back through review.</div>
                   </div>
                 </article>
                 <aside className="space-y-3 text-sm">
@@ -189,13 +189,26 @@ function Infra() {
   );
 }
 
+const PROMISES = [
+  { k: "Every claim", v: "checked against the passage it cites before you see the draft" },
+  { k: "1 question, max", v: "asked only when your number conflicts with a source" },
+  { k: "30 minutes", v: "is the longest an order waits on you before continuing safely" },
+  { k: "Word for word", v: "your approval covers the exact text; any edit is reviewed again" },
+];
+
 function Statement() {
   return (
     <section className="bg-bg">
-      <div className="mx-auto max-w-[1240px] px-4 py-28 md:px-8 md:py-40">
-        <p className="display-md max-w-[22ch] text-fg">
-          Founders don&apos;t lack ideas. They lack the hours to turn them into <span className="serif-accent text-gradient pr-1">something people trust.</span>
-        </p>
+      <div className="mx-auto grid max-w-[1240px] gap-12 px-4 py-24 md:grid-cols-[0.9fr_1.1fr] md:px-8 md:py-32">
+        <h2 className="display-md max-w-[14ch] text-fg">What you can hold us to</h2>
+        <dl className="divide-y divide-line border-y border-line">
+          {PROMISES.map((p) => (
+            <div key={p.k} className="grid gap-1 py-6 sm:grid-cols-[180px_1fr] sm:gap-6">
+              <dt className="text-2xl font-semibold tracking-[-0.03em] text-fg">{p.k}</dt>
+              <dd className="text-base leading-relaxed text-fg-2/85">{p.v}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </section>
   );
@@ -242,7 +255,7 @@ function Steps() {
       <div className="mx-auto grid max-w-[1240px] gap-10 px-4 pb-28 md:grid-cols-3 md:gap-6 md:px-8">
         {STEPS.map((s) => (
           <div key={s.n}>
-            <div className={cn(s.tile, "flex aspect-[5/4] items-center justify-center rounded-3xl p-6")}>
+            <div className="flex aspect-[5/4] items-center justify-center rounded-3xl border border-line bg-panel p-6">
               <StepVisual n={s.n} />
             </div>
             <p className="mt-6 text-xs font-semibold tracking-[0.14em] text-accent-ink">STEP {s.n}</p>
@@ -306,7 +319,7 @@ function SocialPreview({ network, dim }: { network: "x" | "linkedin"; dim?: bool
       <p className="mt-3 text-[13px] leading-relaxed text-fg">
         {network === "x"
           ? "We cut first-response time 60% by automating one boring thing first: password resets. Here's the data ↓"
-          : "Most founders try to automate all of support at once. The pilot data says start narrow — here's what 42 SaaS teams learned."}
+          : "Most founders try to automate all of support at once. The pilot data says start narrow. Here's what 42 SaaS teams learned."}
       </p>
       <div className="mt-3 rounded-xl border border-white/10 p-2.5 text-[11px]">
         <p className="text-subtle">founderdesk.app</p>
@@ -358,9 +371,9 @@ function Channels() {
     <section className="bg-bg">
       <div className="mx-auto max-w-[1240px] px-4 pb-28 md:px-8">
         <h2 className="display-md text-fg">
-          One idea. <span className="serif-accent">Every</span> channel.
+          Written for each place it goes
         </h2>
-        <p className="mt-5 max-w-xl text-lg text-fg-2/80">Each destination is approved on its own, and nothing is called published until we&apos;ve read it back.</p>
+        <p className="mt-5 max-w-xl text-lg text-fg-2/80">Each version is approved on its own, and nothing counts as published until we have read it back.</p>
         <ul className="mt-12 grid gap-5 md:grid-cols-3">
           {CHANNELS.map((c) => (
             <li key={c.key} className={cn("rounded-3xl border border-line bg-panel p-4 transition-colors hover:border-line-strong", c.span)}>
@@ -441,7 +454,7 @@ function ApprovalPromise() {
       <div className="frame px-4 py-20 md:px-12">
         <div className="panel flex flex-col items-center px-6 py-14 text-center">
           <ShieldCheck className="size-6 text-accent-ink" aria-hidden />
-          <p className="mt-6 max-w-2xl text-2xl font-medium leading-snug tracking-[-0.02em] text-fg">“Nothing goes live until you approve the exact text — and if a word changes after you approve, the approval no longer counts.”</p>
+          <p className="mt-6 max-w-2xl text-2xl font-medium leading-snug tracking-[-0.02em] text-fg">Nothing goes live until you approve the exact text. If a word changes after that, your approval no longer counts.</p>
           <p className="mt-5 text-sm text-muted">Approvals are stored against the draft version, its SHA-256 content hash, and the destination.</p>
         </div>
       </div>
@@ -462,7 +475,7 @@ function Pricing() {
     ["Web article", "Included", "green"],
     ["X announcement", "Connect your account", "neutral"],
     ["LinkedIn announcement", "Connect your account", "neutral"],
-    ["TikTok", "Planned — needs a video step", "amber"],
+    ["TikTok", "Planned: needs a video step", "amber"],
   ];
   return (
     <section id="pricing" className="hairline-t scroll-mt-16">

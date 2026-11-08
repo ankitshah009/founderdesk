@@ -29,7 +29,7 @@ export function Announcement() {
     <div className="border-b border-line">
       <Link href="/start" className="group mx-auto flex max-w-[1072px] items-center justify-center gap-2.5 px-4 py-2.5 text-sm text-fg-2">
         <span className="shrink-0 whitespace-nowrap rounded-md bg-accent-tint px-2 py-0.5 text-accent-ink">First article</span>
-        <span className="truncate">Your first article is free — then $9</span>
+        <span className="truncate">Your first article is free, then $9 each</span>
         <ArrowRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />
       </Link>
     </div>
