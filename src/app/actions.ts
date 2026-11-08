@@ -26,6 +26,58 @@ const startSchema = z.object({
   boundaries: z.string().trim().max(1000).optional(),
 });
 
+export type IdeasState = { error?: string; url?: string; result?: import("@/lib/ideas").Ideas } | null;
+
+const ideaHits = new Map<string, number[]>();
+
+/** Step 1 of the website start: read the site and suggest arguments. */
+export async function suggestIdeasAction(_: IdeasState, form: FormData): Promise<IdeasState> {
+  const url = String(form.get("website") ?? "").trim();
+  const note = String(form.get("note") ?? "").trim() || null;
+  if (url.length < 4 || !/\./.test(url)) return { error: "Enter your company website, like acme.com." };
+  // Light abuse guard: 6 suggestion runs per visitor per 10 minutes.
+  const { headers } = await import("next/headers");
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const now = Date.now();
+  const hits = (ideaHits.get(ip) ?? []).filter((t) => now - t < 600_000);
+  if (hits.length >= 6) return { error: "That's a lot of suggestions — pick one, or write your own angle below.", url };
+  ideaHits.set(ip, [...hits, now]);
+  try {
+    const { suggestIdeas } = await import("@/lib/ideas");
+    return { url, result: await suggestIdeas({ url, note }) };
+  } catch (err) {
+    const msg = (err as Error).message;
+    return { url, error: /couldn't read|aren't available|Refusing|Unsupported/.test(msg) ? msg.replace(/^Refusing.*/, "That address can't be read from here.") : "We couldn't suggest ideas for that site just now. Try again, or write your own angle below." };
+  }
+}
+
+const ideaStartSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address"),
+  name: z.string().trim().max(120).optional(),
+  website: z.string().trim().min(4).max(300),
+  pick: z.string().min(2).max(5000),
+  angle: z.string().trim().max(4000).optional(),
+});
+
+/** Step 2: start the order from a picked idea. */
+export async function startFromIdea(_: ActionState, form: FormData): Promise<ActionState> {
+  const parsed = ideaStartSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
+  const v = parsed.data;
+  const { briefFromIdea, ideasSchema } = await import("@/lib/ideas");
+  let picked: { company: import("@/lib/ideas").Ideas["company"]; idea: import("@/lib/ideas").Ideas["ideas"][number] };
+  try {
+    const raw = JSON.parse(v.pick) as { company: unknown; idea: unknown };
+    picked = { company: ideasSchema.shape.company.parse(raw.company), idea: ideasSchema.shape.ideas.element.parse(raw.idea) };
+  } catch {
+    return { error: "Pick one of the ideas first." };
+  }
+  const brief = briefFromIdea({ url: v.website, company: picked.company, idea: picked.idea, angle: v.angle });
+  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject: brief.subject, body: brief.body });
+  kick();
+  redirect(links.orderPath(job.id));
+}
+
 export async function startArticle(_: ActionState, form: FormData): Promise<ActionState> {
   const parsed = startSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };

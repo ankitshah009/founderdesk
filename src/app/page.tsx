@@ -58,16 +58,16 @@ function Hero() {
       <div className="mx-auto max-w-[1240px] px-4 pt-20 pb-16 md:px-8 md:pt-28 md:pb-24">
         <p className="text-xs font-semibold tracking-[0.18em] text-fg-2/80 uppercase">Research agent for founders</p>
         <h1 className="display mt-8 max-w-[15ch] text-fg">
-          Drop in your notes.{" "}
-          <span className="text-accent">We&apos;ll write the article you&apos;d sign.</span>
+          Your website in.{" "}
+          <span className="text-accent">A week of founder content out.</span>
         </h1>
         <div className="mt-12 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
           <p className="max-w-lg text-lg leading-relaxed text-fg-2 md:text-xl">
-            FounderDesk researches your argument, checks every claim against its source, asks you when only you know, and publishes only the version you approved.
+            Paste your site and we suggest arguments only you can make. Pick one and get a researched article with every claim sourced, plus X, LinkedIn, Instagram and newsletter posts, scheduled for each platform. You approve it before anything goes live. The first one is free.
           </p>
           <div className="flex flex-wrap items-center gap-6">
             <ButtonLink href="/start" className="px-7 py-4 text-base">
-              Start an article <ArrowRight className="size-4" aria-hidden />
+              Get my article ideas — free <ArrowRight className="size-4" aria-hidden />
             </ButtonLink>
             <Link href="#how" className="border-b-2 border-accent pb-1 text-base font-semibold text-fg hover:text-accent-ink">
               See how it works

@@ -16,8 +16,8 @@ export default function StartPage() {
         <div className="frame grid gap-12 px-4 py-16 md:grid-cols-[1fr_320px] md:px-12 md:py-20">
           <div>
             <MonoLabel className="mb-5">Start an article</MonoLabel>
-            <h1 className="h1 text-fg">Tell us what you want to argue</h1>
-            <p className="lede mt-4 max-w-lg">Notes are enough. We turn them into a researched, sourced article and send it back for your approval before anything goes live.</p>
+            <h1 className="h1 text-fg">Paste your website. We&apos;ll find what you should argue.</h1>
+            <p className="lede mt-4 max-w-lg">Pick one of our suggestions and we research, write and fact-check the article, plus posts for X, LinkedIn, Instagram and your newsletter. Your first one is free.</p>
             <div className="panel mt-10 p-5 md:p-7">
               <StartForm />
             </div>
@@ -39,7 +39,7 @@ export default function StartPage() {
             <div className="panel p-5 text-sm">
               <p className="text-fg">What happens next</p>
               <ol className="mt-3 space-y-2.5 text-muted">
-                <li>1. You pay $9 — research starts immediately.</li>
+                <li>1. Confirm your email — your first article is free.</li>
                 <li>2. If a number or claim needs you, we ask by email.</li>
                 <li>3. You get a private page to approve or edit the exact text.</li>
                 <li>4. We publish it, confirm it&apos;s live, and check it on a phone.</li>
