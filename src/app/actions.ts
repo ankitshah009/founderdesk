@@ -242,3 +242,14 @@ export async function generateImageAction(_: ActionState, form: FormData): Promi
   refresh();
   return { ok: "Generating — it appears here in about 30 seconds." };
 }
+
+export async function declineImages(form: FormData): Promise<void> {
+  const jobId = verifyLink(String(form.get("t") ?? ""), "review");
+  if (!jobId) return;
+  const { getDb } = await import("@/lib/db/client");
+  const { jobs } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const db = await getDb();
+  await db.update(jobs).set({ imagesDeclined: true }).where(eq(jobs.id, jobId));
+  refresh();
+}

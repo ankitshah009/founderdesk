@@ -193,7 +193,8 @@ describe("platform-native versions", () => {
     expect(d.variants!.x!.every((t) => t.length <= 280)).toBe(true);
     expect(d.variants!.x!.at(-1)).toContain("{{url}}");
     expect(d.variants!.linkedin!.length).toBeLessThanOrEqual(3000);
-    expect(d.variants!.linkedin!.trim().endsWith("{{url}}")).toBe(true);
+    expect(d.variants!.linkedin!).toContain("{{url}}");
+    expect(d.variants!.linkedin!.trim()).toMatch(/(#[A-Za-z0-9]+ ?){3,5}$/);
     expect(d.variants!.xSingle!.length).toBeLessThanOrEqual(280);
     expect(d.variants!.xSingle).toContain("{{url}}");
   });
@@ -211,5 +212,18 @@ describe("platform-native versions", () => {
     const base = { title: "T", dek: "D", bodyMarkdown: "B", announcement: "A", variants: { x: ["one {{url}}"] } };
     expect(draftContentHash(base)).not.toBe(draftContentHash({ ...base, variants: { x: ["two {{url}}"] } }));
     expect(draftContentHash({ ...base, variants: {} })).toBe(draftContentHash({ title: "T", dek: "D", bodyMarkdown: "B", announcement: "A" }));
+  });
+});
+
+describe("LinkedIn hashtags", () => {
+  it("generates 3–5 specific hashtags and flags missing or generic ones", async () => {
+    const { hashtagsFor, linkedinHashtagIssue } = await import("@/lib/workflow/editorial");
+    const tags = hashtagsFor("why seed-stage founders should publish their pricing page early for B2B SaaS founders");
+    expect(tags.length).toBeGreaterThanOrEqual(3);
+    expect(tags.length).toBeLessThanOrEqual(5);
+    expect(tags).toEqual(expect.arrayContaining(["#Pricing", "#SaaS", "#B2B"]));
+    expect(linkedinHashtagIssue(`Post\n\n${tags.join(" ")}`)).toBeNull();
+    expect(linkedinHashtagIssue("Post with no tags")).toMatch(/0 hashtags/);
+    expect(linkedinHashtagIssue("Post #SaaS #Pricing #success")).toMatch(/generic/);
   });
 });

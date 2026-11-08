@@ -143,7 +143,7 @@ export function writePrompt(args: {
     args.previousBody ? `Previous draft:\n${args.previousBody}` : "",
     `Available source references: ${args.sources.filter((s) => s.status === "fetched").map((s) => s.ref).join(", ")}`,
     "Also write a short announcement (under 260 characters, ending with {{url}}) and list every factual claim with its source references. List significant corrections you made relative to the founder's notes.",
-    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}.",
+    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}, then a final line of 3–5 specific, relevant hashtags (e.g. #SaaS #CustomerSupport), never generic ones like #success or #motivation.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -349,6 +349,10 @@ export function runGuardrails(ctx: GuardrailContext): Finding[] {
       proposedFix: `${fixed} [${narrow.s.ref}]`,
     });
   }
+
+  // LinkedIn post: 3–5 specific hashtags.
+  const tagIssue = draft.variants?.linkedin ? linkedinHashtagIssue(draft.variants.linkedin) : null;
+  if (tagIssue) findings.push({ id: fid("hashtags"), severity: "blocking", kind: "linkedin_hashtags", claim: tagIssue, proposedFix: "End the LinkedIn post with 3–5 specific hashtags." });
 
   // 4. Citation integrity.
   const known = new Set(sources.filter((s) => s.status === "fetched").map((s) => s.ref));
@@ -567,7 +571,7 @@ export function localWrite(args: {
       `The full piece, with a source beside every claim: {{url}}`,
     ],
     xSingle: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}. What the evidence supports, and where it stops: {{url}}`.slice(0, 280),
-    linkedin: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\n${lead}.\n\nI wrote up what the evidence supports — and where it stops — for ${audience}.\n\nWhat would you add?\n\n{{url}}`.slice(0, 3000),
+    linkedin: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\n${lead}.\n\nI wrote up what the evidence supports, and where it stops, for ${audience}.\n\nWhat would you add?\n\n{{url}}\n\n${hashtagsFor(`${job.topic} ${job.thesis ?? ""} ${audience}`).join(" ")}`.slice(0, 3000),
   };
   const draft: DraftOutput = {
     title: scrubPrivate(title, job.privateTerms),
@@ -583,4 +587,26 @@ export function localWrite(args: {
 
 export function localReview(): Pick<ReviewOutput, "outcome" | "summary"> {
   return { outcome: "READY_FOR_APPROVAL", summary: "Simulated reviewer: structural checks only; deterministic guardrails decide the outcome." };
+}
+
+const GENERIC_TAGS = new Set(["success", "motivation", "inspiration", "business", "growth", "leadership", "entrepreneur"]);
+const TAG_WORDS: Array<[RegExp, string]> = [
+  [/\bsaas\b/i, "SaaS"], [/\bstartups?\b|\bfounders?\b/i, "Startups"], [/\bsupport\b/i, "CustomerSupport"], [/\bpricing\b/i, "Pricing"],
+  [/\bsales\b/i, "Sales"], [/\bai\b/i, "AI"], [/\bmarketing\b/i, "Marketing"], [/\bproduct\b/i, "ProductManagement"], [/\bb2b\b/i, "B2B"],
+  [/\bfundrais|\binvestors?\b|\bseed\b/i, "Fundraising"], [/\bhiring\b|\brecruit/i, "Hiring"], [/\bwriting\b|\bin public\b/i, "BuildInPublic"],
+];
+
+/** 3–5 specific hashtags for a LinkedIn post, derived from the brief. */
+export function hashtagsFor(text: string): string[] {
+  const tags = TAG_WORDS.filter(([re]) => re.test(text)).map(([, t]) => t);
+  for (const fallback of ["Startups", "Founders", "SaaS"]) if (tags.length < 3 && !tags.includes(fallback)) tags.push(fallback);
+  return [...new Set(tags)].slice(0, 5).map((t) => `#${t}`);
+}
+
+/** Hashtag count check for LinkedIn posts: 3–5, none generic. */
+export function linkedinHashtagIssue(post: string): string | null {
+  const tags = (post.match(/#[A-Za-z][A-Za-z0-9]+/g) ?? []).map((t) => t.slice(1).toLowerCase());
+  if (tags.length < 3 || tags.length > 5) return `The LinkedIn post has ${tags.length} hashtags; use 3–5 specific ones at the end.`;
+  if (tags.some((t) => GENERIC_TAGS.has(t))) return "The LinkedIn post uses a generic hashtag; replace it with a specific one.";
+  return null;
 }

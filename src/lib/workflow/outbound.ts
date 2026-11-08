@@ -73,7 +73,7 @@ export const templates = {
   review_link(job: Job) {
     return {
       subject: subjectFor(job),
-      text: `${hello(job)}\n\nYour article is ready for review. The page shows the finished article, the corrections we made, and the source beside each claim:\n\n${links.review(job.id)}\n\nNothing goes live until you press Approve. You can also edit the text there; edits go back through review.\n\n— FounderDesk`,
+      text: `${hello(job)}\n\nYour article is ready for review. The page shows the finished article, the corrections we made, and the source beside each claim:\n\n${links.review(job.id)}\n\nNothing goes live until you press Approve. You can also edit the text there; edits go back through review.\n\nWant images with it? Add 10 image credits for $5 from the same page.\n\n— FounderDesk`,
     };
   },
   published(job: Job, url: string) {

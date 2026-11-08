@@ -14,6 +14,7 @@ import { verifyLink } from "@/lib/security";
 import { orderView } from "@/lib/views";
 import { ApprovePanel, EditPanel } from "./review-actions";
 import { GenerateButton } from "./images-panel";
+import { declineImages } from "@/app/actions";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { images } from "@/lib/db/schema";
@@ -78,6 +79,21 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
             {draft.author === "founder_edit" ? <Chip tone="blue">Your edit</Chip> : null}
             <AutoRefresh tickUrl={`/api/orders/${job.id}/tick?t=${encodeURIComponent(token)}`} active={IN_PROGRESS.includes(job.stage) || jobImages.some((i) => i.status === "generating")} />
           </div>
+          {ready && job.imageCredits === 0 && !job.imagesDeclined && !jobImages.length ? (
+            <div className="mb-8 rounded-2xl border border-accent/30 bg-accent-tint p-5">
+              <p className="text-base font-semibold text-fg">Want images with this article?</p>
+              <p className="mt-1 text-sm text-fg-2">A header image and section images, made for this article. 10 image credits for $5.</p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <a href={`/api/checkout/${job.id}/images?t=${encodeURIComponent(token)}`} className="bg-accent px-4 py-2 text-sm font-semibold text-[#140a05] hover:bg-[#ff6f3a]">
+                  Yes, add images · $5
+                </a>
+                <form action={declineImages}>
+                  <input type="hidden" name="t" value={token} />
+                  <button type="submit" className="px-2 py-2 text-sm text-fg-2 hover:text-fg">No thanks</button>
+                </form>
+              </div>
+            </div>
+          ) : null}
           <h1 className="text-[2.25rem] font-medium leading-[1.12] tracking-[-0.03em] text-fg">{draft.title}</h1>
           <p className="mt-4 text-lg leading-relaxed text-muted">{draft.dek}</p>
           {jobImages.find((i) => i.slot === "hero" && i.status === "ready") ? (

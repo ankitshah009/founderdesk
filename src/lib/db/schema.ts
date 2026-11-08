@@ -94,6 +94,7 @@ export const jobs = pgTable(
     revisionCycles: integer("revision_cycles").notNull().default(0),
     sourceSeq: integer("source_seq").notNull().default(0),
     imageCredits: integer("image_credits").notNull().default(0),
+    imagesDeclined: boolean("images_declined").notNull().default(false),
     founderReplies: jsonb("founder_replies").$type<FounderReply[]>().notNull().default([]),
     openQuestions: jsonb("open_questions").$type<string[]>().notNull().default([]),
     destinations: jsonb("destinations").$type<string[]>().notNull().default(["web"]),

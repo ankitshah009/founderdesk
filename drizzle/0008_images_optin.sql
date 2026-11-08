@@ -1,0 +1,1 @@
+ALTER TABLE "jobs" ADD COLUMN "images_declined" boolean DEFAULT false NOT NULL;

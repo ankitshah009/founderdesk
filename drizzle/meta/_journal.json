@@ -57,6 +57,13 @@
       "when": 1794103995483,
       "tag": "0007_x_format",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794105269705,
+      "tag": "0008_images_optin",
+      "breakpoints": true
     }
   ]
 }
