@@ -8,15 +8,17 @@ export function Nav() {
     <header className="sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-[1072px] items-center justify-between px-4 md:px-6">
         <Wordmark />
-        <nav aria-label="Primary" className="hidden items-center gap-7 text-sm text-muted md:flex">
+        <nav aria-label="Primary" className="hidden items-center gap-6 text-sm text-muted lg:flex">
           <Link href="/#how" className="hover:text-fg">How it works</Link>
-          <Link href="/#evidence" className="hover:text-fg">Evidence</Link>
-          <Link href="/#architecture" className="hover:text-fg">Architecture</Link>
+          <Link href="/#features" className="hover:text-fg">Features</Link>
+          <Link href="/#idea-lab" className="hover:text-fg">Idea Lab</Link>
+          <Link href="/#compare" className="hover:text-fg">Compare</Link>
           <Link href="/#pricing" className="hover:text-fg">Pricing</Link>
-          <Link href="/articles" className="hover:text-fg">Articles</Link>
+          <Link href="/studio" className="hover:text-fg">Studio</Link>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/signin" className="hidden px-2 text-sm text-fg-2 hover:text-fg sm:inline">Your orders</Link>
+          <Link href="/signin?next=/studio" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg">Sign in</Link>
+          <ButtonLink href="/signup" variant="secondary" className="max-sm:hidden">Sign up</ButtonLink>
           <ButtonLink href="/start">Start an article</ButtonLink>
         </div>
       </div>
@@ -37,9 +39,9 @@ export function Announcement() {
 }
 
 const columns = [
-  { title: "Product", links: [["How it works", "/#how"], ["Evidence", "/#evidence"], ["Pricing", "/#pricing"], ["Articles", "/articles"], ["Start an article", "/start"]] },
-  { title: "Builders", links: [["Architecture", "/#architecture"], ["MCP server", "/desk/connect"], ["Integration status", "/status"]] },
-  { title: "Founders", links: [["Operator desk", "/desk"], ["Email intake", "/start#email"]] },
+  { title: "Product", links: [["How it works", "/#how"], ["Features", "/#features"], ["Idea Lab", "/#idea-lab"], ["Evidence", "/#evidence"], ["Compare", "/#compare"], ["Pricing", "/#pricing"], ["FAQ", "/#faq"], ["Articles", "/articles"]] },
+  { title: "Builders", links: [["Infrastructure", "/#stack"], ["MCP server", "/desk/connect"], ["Integration status", "/status"]] },
+  { title: "Founders", links: [["Start an article", "/start"], ["Sign up", "/signup"], ["Sign in", "/signin?next=/studio"], ["Studio", "/studio"], ["Desk", "/desk"], ["Email intake", "/start#email"]] },
 ] as const;
 
 export function Footer() {

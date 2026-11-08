@@ -71,6 +71,20 @@
       "when": 1794105628087,
       "tag": "0009_approval_images",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794153097442,
+      "tag": "0010_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794155520340,
+      "tag": "0011_setup_flags",
+      "breakpoints": true
     }
   ]
 }

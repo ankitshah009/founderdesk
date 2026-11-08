@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { Mark } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
+import { ReadBeacon } from "@/components/article/read-beacon";
 import { getDb } from "@/lib/db/client";
 import { approvals, drafts, images, jobs, publications, sources } from "@/lib/db/schema";
 
@@ -53,6 +54,7 @@ async function Article({ params }: PageProps<"/a/[slug]">) {
 
   return (
     <>
+      {pub.status === "published" ? <ReadBeacon slug={pub.slug!} /> : null}
       <title>{draft.title}</title>
       <meta name="description" content={draft.dek} />
       <meta property="og:title" content={draft.title} />

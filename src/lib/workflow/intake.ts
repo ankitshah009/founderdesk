@@ -92,6 +92,12 @@ export async function recordFounderReply(job: Job, args: { text: string; message
     .returning();
   for (const s of created) await enqueue(job.id, "source_fetch", `${job.id}:fetch:${s.id}`, { sourceId: s.id });
 
+  // Editorial memory: a founder's answer to the reviewer is a fact worth keeping for later articles.
+  if (job.openQuestions.length && args.text.trim() && !args.text.startsWith(AUTO_REPLY.slice(0, 30))) {
+    const { remember } = await import("@/lib/studio/store");
+    await remember(job.founderEmail, { kind: "fact", text: `Asked “${job.openQuestions[0]!.slice(0, 160)}” — answered: ${args.text.trim().split("\n")[0]!.slice(0, 220)}`, origin: "founder_reply", jobId: job.id });
+  }
+
   if (updated!.stage === "WAITING_FOR_FOUNDER") {
     const draft = await latestDraft(job.id);
     if (draft && (await transition(job.id, ["WAITING_FOR_FOUNDER"], "REVIEWING", "Re-assessing with the founder's reply"))) {
