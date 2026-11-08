@@ -36,7 +36,7 @@ const schema = z.object({
   NAIVE_API_KEY: optional,
   NAIVE_BASE_URL: z.string().url().default("https://api.vetta.sh/v1"),
   NAIVE_MODEL: z.string().default("vetta/auto"),
-  NAIVE_SESSION_BUDGET_MICRO_USD: z.coerce.number().int().positive().default(1_000_000),
+  NAIVE_SESSION_BUDGET_MICRO_USD: z.coerce.number().int().positive().default(700_000),
 
   MONID_API_KEY: optional,
   MONID_BASE_URL: z.string().url().default("https://api.monid.ai/v1"),
