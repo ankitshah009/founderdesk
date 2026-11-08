@@ -36,11 +36,16 @@ export async function runWork({ budgetMs = 45_000, idleExitMs = 20_000 } = {}): 
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Kick the workflow after the current response has been sent. */
+/**
+ * Kick the workflow after the current response has been sent, and keep it
+ * moving: wait through the short polls of agent sessions (Naive, Monid,
+ * Mobile Run) instead of leaving them for the next cron tick, so each step,
+ * and the email that follows it, happens within seconds.
+ */
 export function kick() {
   after(async () => {
     try {
-      await runWork();
+      await runWork({ budgetMs: 55_000, idleExitMs: 50_000 });
     } catch (err) {
       console.error("[founderdesk] workflow run failed", err);
     }

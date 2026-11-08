@@ -227,3 +227,14 @@ describe("LinkedIn hashtags", () => {
     expect(linkedinHashtagIssue("Post #SaaS #Pricing #success")).toMatch(/generic/);
   });
 });
+
+describe("email rate limits", () => {
+  it("retries after the provider's stated reset, or in 15 minutes; other errors are not retried", async () => {
+    const { rateLimitRetryAt } = await import("@/lib/workflow/outbound");
+    const now = Date.parse("2026-11-08T18:16:00Z");
+    const agentmail = 'ProviderError: agentmail HTTP 429: {"code":"rate_limit_exceeded","message":"... The limit rises to 25 at 2026-11-08T20:42:10.984Z and lifts ..."}';
+    expect(rateLimitRetryAt(agentmail, now)!.toISOString()).toBe("2026-11-08T20:42:40.984Z");
+    expect(rateLimitRetryAt("ProviderError: agentmail HTTP 429: slow down", now)!.getTime()).toBe(now + 15 * 60_000);
+    expect(rateLimitRetryAt("ProviderError: agentmail HTTP 400: bad address", now)).toBeNull();
+  });
+});

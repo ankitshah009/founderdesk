@@ -354,6 +354,8 @@ export const outboundMessages = pgTable(
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    /** Not before this time: set when the email provider rate-limits us. */
+    retryAt: timestamp("retry_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("outbound_request_key_idx").on(t.requestKey), index("outbound_job_idx").on(t.jobId)],
 );

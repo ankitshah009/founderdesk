@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { jobs, outboundMessages, type Job, type OutboundMessage, type QualityScores } from "@/lib/db/schema";
 import { env, isLive } from "@/lib/env";
@@ -120,7 +120,7 @@ export async function deliverOutbound(limit = 10): Promise<number> {
   const pending = await db
     .select()
     .from(outboundMessages)
-    .where(eq(outboundMessages.state, "pending"))
+    .where(and(eq(outboundMessages.state, "pending"), or(isNull(outboundMessages.retryAt), lte(outboundMessages.retryAt, new Date()))))
     .orderBy(asc(outboundMessages.createdAt))
     .limit(limit);
   let delivered = 0;
@@ -149,8 +149,20 @@ export async function deliverOutbound(limit = 10): Promise<number> {
       }
       delivered++;
     } catch (err) {
-      await db.update(outboundMessages).set({ state: "failed", sentAt: null, error: String(err).slice(0, 500) }).where(eq(outboundMessages.id, msg.id));
+      const text = String(err);
+      const retryAt = rateLimitRetryAt(text);
+      // Rate limited (e.g. AgentMail's new-account recipient cap): keep it queued and try again after the reset.
+      if (retryAt) await db.update(outboundMessages).set({ state: "pending", sentAt: null, retryAt, error: text.slice(0, 500) }).where(eq(outboundMessages.id, msg.id));
+      else await db.update(outboundMessages).set({ state: "failed", sentAt: null, error: text.slice(0, 500) }).where(eq(outboundMessages.id, msg.id));
     }
   }
   return delivered;
+}
+
+/** When a send was rate limited, the time to try again: the provider's stated reset, else 15 minutes. */
+export function rateLimitRetryAt(error: string, now = Date.now()): Date | null {
+  if (!/HTTP 429|rate_limit|RateLimit/i.test(error)) return null;
+  const stated = error.match(/\b(20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)\b/)?.[1];
+  const at = stated ? Date.parse(stated) : NaN;
+  return new Date(Number.isFinite(at) && at > now ? at + 30_000 : now + 15 * 60_000);
 }
