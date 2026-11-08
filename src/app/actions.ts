@@ -26,56 +26,105 @@ const startSchema = z.object({
   boundaries: z.string().trim().max(1000).optional(),
 });
 
-export type IdeasState = { error?: string; url?: string; result?: import("@/lib/ideas").Ideas } | null;
+export type IdeasState = {
+  error?: string;
+  material?: string;
+  /** Notes already argue something: confirm it instead of suggesting. */
+  direct?: { thesis: string; audience: string | null; topic: string };
+  result?: import("@/lib/ideas").Ideas;
+} | null;
 
 const ideaHits = new Map<string, number[]>();
 
-/** Step 1 of the website start: read the site and suggest arguments. */
-export async function suggestIdeasAction(_: IdeasState, form: FormData): Promise<IdeasState> {
-  const url = String(form.get("website") ?? "").trim();
-  const note = String(form.get("note") ?? "").trim() || null;
-  if (url.length < 4 || !/\./.test(url)) return { error: "Enter your company website, like acme.com." };
-  // Light abuse guard: 6 suggestion runs per visitor per 10 minutes.
+async function allowIdeaRun(): Promise<boolean> {
   const { headers } = await import("next/headers");
   const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   const now = Date.now();
   const hits = (ideaHits.get(ip) ?? []).filter((t) => now - t < 600_000);
-  if (hits.length >= 6) return { error: "That's a lot of suggestions — pick one, or write your own angle below.", url };
+  if (hits.length >= 8) return false;
   ideaHits.set(ip, [...hits, now]);
+  return true;
+}
+
+/**
+ * Step 1: read whatever the founder dropped in. A clear argument is confirmed
+ * as-is; anything else gets suggestions grounded in their notes and website.
+ */
+export async function readMaterialAction(prev: IdeasState, form: FormData): Promise<IdeasState> {
+  const material = String(form.get("material") ?? "").trim().slice(0, 20_000);
+  const op = String(form.get("op") ?? "read"); // read | ideas | shuffle | bold
+  if (material.length < 4) return { error: "Paste your website, some notes, or record a voice note." };
+  const { clearArgument, readMaterial, suggestIdeas } = await import("@/lib/ideas");
+  if (op === "read") {
+    const direct = clearArgument(material);
+    if (direct) return { material, direct };
+  }
+  const { website, notes } = readMaterial(material);
+  if (!website && notes.length < 30) return { material, error: "Add your website or a couple of sentences about what you do and what you've seen." };
+  if (!(await allowIdeaRun())) return { ...prev, material, error: "That's a lot of suggestions. Pick one, or write what you want to argue." };
   try {
-    const { suggestIdeas } = await import("@/lib/ideas");
-    return { url, result: await suggestIdeas({ url, note }) };
+    const avoid = op === "shuffle" || op === "bold" ? (prev?.result?.ideas.map((i) => i.title) ?? []) : [];
+    return { material, result: await suggestIdeas({ material, bold: op === "bold", avoid }) };
   } catch (err) {
     const msg = (err as Error).message;
-    return { url, error: /couldn't read|aren't available|Refusing|Unsupported/.test(msg) ? msg.replace(/^Refusing.*/, "That address can't be read from here.") : "We couldn't suggest ideas for that site just now. Try again, or write your own angle below." };
+    return { ...prev, material, error: /couldn't read|aren't available|Add your website/.test(msg) ? msg : "We couldn't suggest ideas just now. Try again, or write what you want to argue." };
   }
 }
 
 const ideaStartSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
   name: z.string().trim().max(120).optional(),
-  website: z.string().trim().min(4).max(300),
-  pick: z.string().min(2).max(5000),
+  material: z.string().trim().min(4).max(20_000),
+  pick: z.string().max(5000).optional(),
   angle: z.string().trim().max(4000).optional(),
+  boundaries: z.string().trim().max(1000).optional(),
 });
 
-/** Step 2: start the order from a picked idea. */
+/** Step 2: start the order from a picked idea, or from the founder's own argument. */
 export async function startFromIdea(_: ActionState, form: FormData): Promise<ActionState> {
   const parsed = ideaStartSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
   const v = parsed.data;
   const { briefFromIdea, ideasSchema } = await import("@/lib/ideas");
-  let picked: { company: import("@/lib/ideas").Ideas["company"]; idea: import("@/lib/ideas").Ideas["ideas"][number] };
-  try {
-    const raw = JSON.parse(v.pick) as { company: unknown; idea: unknown };
-    picked = { company: ideasSchema.shape.company.parse(raw.company), idea: ideasSchema.shape.ideas.element.parse(raw.idea) };
-  } catch {
-    return { error: "Pick one of the ideas first." };
+  let subject: string | null = null;
+  let body: string;
+  if (v.pick) {
+    try {
+      const raw = JSON.parse(v.pick) as { company: unknown; idea: unknown };
+      const company = raw.company ? ideasSchema.shape.company.parse(raw.company) : null;
+      const idea = ideasSchema.shape.ideas.element.parse(raw.idea);
+      ({ subject, body } = briefFromIdea({ material: v.material, company, idea, angle: v.angle }));
+    } catch {
+      return { error: "Pick one of the ideas first." };
+    }
+  } else {
+    // The founder's own argument: their material is the brief.
+    body = [v.material, v.angle ? `\nMore from me: ${v.angle}` : ""].join("");
   }
-  const brief = briefFromIdea({ url: v.website, company: picked.company, idea: picked.idea, angle: v.angle });
-  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject: brief.subject, body: brief.body });
+  if (v.boundaries) body += `\n\n${v.boundaries}`;
+  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject, body });
   kick();
   redirect(links.orderPath(job.id));
+}
+
+/**
+ * Voice notes and files dropped into the start box become text the founder can
+ * see and edit. Requests are capped at 4.5 MB by the platform; the recorder
+ * compresses well under that (about 15 minutes of speech).
+ */
+export async function materialFromFile(form: FormData): Promise<{ text?: string; error?: string }> {
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "No file received." };
+  if (file.size > 4_400_000) return { error: "That file is over 4 MB. Email it to us instead, or paste a link to it." };
+  if (!(await allowIdeaRun())) return { error: "Too many uploads in a few minutes. Try again shortly." };
+  const { bytesToText } = await import("@/lib/extract");
+  try {
+    const text = await bytesToText(new Uint8Array(await file.arrayBuffer()), file.type || "", file.name);
+    if (!text?.trim()) return { error: "We couldn't read anything from that file. Try audio, PDF or text." };
+    return { text: text.replace(/^Transcript of [^:]+:\n\n/, "").trim().slice(0, 15_000) };
+  } catch {
+    return { error: "We couldn't read that file just now. Try again, or paste the text." };
+  }
 }
 
 export async function startArticle(_: ActionState, form: FormData): Promise<ActionState> {

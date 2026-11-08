@@ -16,8 +16,8 @@ export default function StartPage() {
         <div className="frame grid gap-12 px-4 py-16 md:grid-cols-[1fr_320px] md:px-12 md:py-20">
           <div>
             <MonoLabel className="mb-5">Start an article</MonoLabel>
-            <h1 className="h1 text-fg">Paste your website. We&apos;ll find what you should argue.</h1>
-            <p className="lede mt-4 max-w-lg">Pick one of our suggestions and we research, write and fact-check the article, plus posts for X, LinkedIn, Instagram and your newsletter. Your first one is free.</p>
+            <h1 className="h1 text-fg">Drop in what you&apos;ve got.</h1>
+            <p className="lede mt-4 max-w-lg">Your website, rough notes, a link, or a two-minute voice note. If you already know your argument we&apos;ll write it; if not, we&apos;ll suggest one only you can make. First article free.</p>
             <div className="panel mt-10 p-5 md:p-7">
               <StartForm />
             </div>

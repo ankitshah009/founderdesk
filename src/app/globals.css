@@ -231,3 +231,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-\[shimmer_2\.4s_linear_infinite\], .animate-ping { animation: none; }
 }
+
+/* The start composer shows focus on its whole frame instead. */
+.composer-input:focus-visible {
+  outline: none;
+}

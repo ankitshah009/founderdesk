@@ -119,7 +119,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
           </div>
         </div>
         <aside className="space-y-4">
-          <Details view={view} />
+          <Details view={view} freeEligible={freeEligible} />
           <Messages view={view} />
         </aside>
       </div>
@@ -200,14 +200,14 @@ function Headline({ view, payUrl, freeEligible }: { view: OrderView; payUrl: str
   }
 }
 
-function Details({ view }: { view: OrderView }) {
+function Details({ view, freeEligible }: { view: OrderView; freeEligible: boolean }) {
   const { job, web, draft } = view;
   const rows: Array<[string, React.ReactNode]> = [
     ["Topic", job.topic],
     ["Audience", job.audience ?? "—"],
     ["Placed", job.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })],
-    ["Price", `$${(job.amountCents / 100).toFixed(2)}`],
-    ["Payment", job.paymentStatus === "paid" ? <Chip tone="green">Paid</Chip> : <Chip>Unpaid</Chip>],
+    ["Price", job.amountCents === 0 || freeEligible ? "Free — first article" : `$${(job.amountCents / 100).toFixed(2)}`],
+    ["Payment", job.paymentStatus === "paid" ? <Chip tone="green">{job.amountCents === 0 ? "Started" : "Paid"}</Chip> : <Chip>{freeEligible ? "Confirm your email" : "Unpaid"}</Chip>],
     ["Draft", draft ? `v${draft.version}` : "—"],
   ];
   return (
