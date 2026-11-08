@@ -90,7 +90,7 @@ async function failJob(jobId: string, reason: string) {
 async function monidStart(provider: string, endpoint: string, input: Record<string, unknown>): Promise<StartResult> {
   const run = await monid.run(provider, endpoint, input);
   if (run.status === "BLOCKED") throw new PermanentError(`Monid blocked the run: ${run.reason ?? "control gate"}`);
-  if (run.status === "COMPLETED") return { done: { monid: run }, costMicroUsd: monidCost(run) };
+  if (run.status === "COMPLETED") return { done: { monid: run }, costMicroUsd: monidCost(run), provider: "monid" };
   if (monid.TERMINAL.has(run.status)) throw new Error(`Monid run ${run.runId} ended ${run.status}`);
   return { started: run.runId, provider: "monid" };
 }

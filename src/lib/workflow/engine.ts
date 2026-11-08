@@ -19,7 +19,7 @@ import { ProviderError } from "@/lib/integrations/http";
  */
 
 export type StartResult =
-  | { done: unknown; simulated?: boolean; costMicroUsd?: number }
+  | { done: unknown; simulated?: boolean; costMicroUsd?: number; provider?: string }
   | { started: string; provider: string; simulated?: boolean }
   | { defer: number; reason: string };
 export type PollResult = { running: true } | { done: unknown; costMicroUsd?: number } | { failed: string; retryable?: boolean; costMicroUsd?: number };
@@ -134,7 +134,9 @@ export async function step(): Promise<boolean> {
       if ("defer" in res) {
         await save(d.id, { leaseUntil: null, error: res.reason, nextRunAt: new Date(Date.now() + res.defer) });
       } else if ("done" in res) {
-        if (res.simulated || res.costMicroUsd) await save(d.id, { simulated: res.simulated ?? false, costMicroUsd: d.costMicroUsd + (res.costMicroUsd ?? 0) });
+        if (res.simulated || res.costMicroUsd || res.provider) {
+          await save(d.id, { simulated: res.simulated ?? false, costMicroUsd: d.costMicroUsd + (res.costMicroUsd ?? 0), ...(res.provider ? { provider: res.provider } : {}) });
+        }
         await finish(d, h, res.done);
       } else {
         await save(d.id, {
