@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import "./handlers";
 import "./publish";
+import "./images";
 import { nextWakeAt, step } from "./engine";
 import { deliverOutbound } from "./outbound";
 import { resumeStaleWaits } from "./intake";

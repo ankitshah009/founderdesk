@@ -57,6 +57,7 @@ export async function approveArticle(_: ActionState, form: FormData): Promise<Ac
       draftId: String(form.get("draftId")),
       contentHash: String(form.get("contentHash")),
       destinations: form.getAll("destinations").map(String),
+      xFormat: form.get("xFormat") === "single" ? "single" : "thread",
     });
   } catch (err) {
     if (err instanceof GateError) return { error: err.message };
@@ -225,4 +226,19 @@ export async function deskRetry(form: FormData): Promise<void> {
   await retryJob(String(form.get("jobId")));
   kick();
   refresh();
+}
+
+export async function generateImageAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const jobId = verifyLink(String(form.get("t") ?? ""), "review");
+  if (!jobId) return { error: "This link is invalid or has expired." };
+  const { ImageError, requestImage } = await import("@/lib/workflow/images");
+  try {
+    await requestImage(jobId, String(form.get("slot") ?? "hero"));
+  } catch (err) {
+    if (err instanceof ImageError) return { error: err.message };
+    throw err;
+  }
+  kick();
+  refresh();
+  return { ok: "Generating — it appears here in about 30 seconds." };
 }

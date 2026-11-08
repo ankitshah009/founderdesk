@@ -56,3 +56,22 @@ export async function verifyStripeWebhook(rawBody: string, signature: string | n
   if (!signature) throw new Error("Missing stripe-signature header");
   return stripe().webhooks.constructEventAsync(rawBody, signature, secret);
 }
+
+/** Checkout for the images add-on: 10 credits for $5, tied to one order. */
+export async function createImagePackCheckout(args: { jobId: string; founderEmail: string; successUrl: string; cancelUrl: string }) {
+  return stripe().checkout.sessions.create(
+    {
+      mode: "payment",
+      customer_email: args.founderEmail,
+      client_reference_id: args.jobId,
+      metadata: { job_id: args.jobId, addon: "images_10" },
+      payment_intent_data: { metadata: { job_id: args.jobId, addon: "images_10" } },
+      line_items: [
+        { quantity: 1, price_data: { currency: "usd", unit_amount: 500, product_data: { name: "FounderDesk images — 10 credits", description: "Header and section images for your article" } } },
+      ],
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+    },
+    { idempotencyKey: `images:${args.jobId}:${Math.floor(Date.now() / 600_000)}` },
+  );
+}

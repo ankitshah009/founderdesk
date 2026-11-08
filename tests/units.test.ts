@@ -194,6 +194,8 @@ describe("platform-native versions", () => {
     expect(d.variants!.x!.at(-1)).toContain("{{url}}");
     expect(d.variants!.linkedin!.length).toBeLessThanOrEqual(3000);
     expect(d.variants!.linkedin!.trim().endsWith("{{url}}")).toBe(true);
+    expect(d.variants!.xSingle!.length).toBeLessThanOrEqual(280);
+    expect(d.variants!.xSingle).toContain("{{url}}");
   });
 
   it("guardrails catch an unsupported figure or private name inside a social post", async () => {

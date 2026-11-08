@@ -267,3 +267,25 @@ describe("free first article", () => {
     await expect(fulfillPayment({ jobId: b.id, checkoutSessionId: `free_${b.id}`, amountTotal: null })).rejects.toThrow();
   });
 });
+
+describe("X format choice", () => {
+  it("stores the founder's one-post or thread choice on the X approval", async () => {
+    process.env.X_USER_ACCESS_TOKEN = "test-x-token";
+    const { resetEnvCache } = await import("@/lib/env");
+    resetEnvCache();
+    const { createJob } = await import("@/lib/workflow/intake");
+    const db = await getDb();
+    const job = await createJob({ channel: "web", founderEmail: "xchoice@founder.test", subject: "X", body: "I want to write about why one post beats a thread sometimes. My audience is founders." });
+    const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: "T", dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A", contentHash: "hx" }).returning();
+    await db.insert(reviews).values({ jobId: job.id, draftId: d!.id, outcome: "READY_FOR_APPROVAL", summary: "ok", findings: [] });
+    await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
+    const { destinations } = await approveDraft({ jobId: job.id, draftId: d!.id, contentHash: "hx", destinations: ["x"], xFormat: "single" });
+    expect(destinations).toEqual(["web", "x"]);
+    const { approvals } = await import("@/lib/db/schema");
+    const rows = await db.select().from(approvals).where(eq(approvals.jobId, job.id));
+    expect(rows.find((r) => r.destination === "x")!.option).toBe("single");
+    expect(rows.find((r) => r.destination === "web")!.option).toBeNull();
+    delete process.env.X_USER_ACCESS_TOKEN;
+    resetEnvCache();
+  });
+});

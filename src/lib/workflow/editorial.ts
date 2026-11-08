@@ -33,6 +33,7 @@ export const draftOutputSchema = z.object({
   variants: z
     .object({
       x: z.array(z.string().min(1).max(280)).min(1).max(6),
+      xSingle: z.string().min(10).max(280),
       linkedin: z.string().min(40).max(3000),
     })
     .partial()
@@ -142,7 +143,7 @@ export function writePrompt(args: {
     args.previousBody ? `Previous draft:\n${args.previousBody}` : "",
     `Available source references: ${args.sources.filter((s) => s.status === "fetched").map((s) => s.ref).join(", ")}`,
     "Also write a short announcement (under 260 characters, ending with {{url}}) and list every factual claim with its source references. List significant corrections you made relative to the founder's notes.",
-    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}.",
+    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -260,7 +261,7 @@ export function resolveFigureFinding(finding: Finding, replies: FounderReply[]):
 
 export type GuardrailContext = {
   job: Job;
-  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: { x?: string[]; linkedin?: string } };
+  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: { x?: string[]; xSingle?: string; linkedin?: string } };
   sources: SourceView[];
   revisionCycles: number;
   maxRevisionCycles: number;
@@ -272,7 +273,7 @@ const fid = (kind: string) => `${kind}-${Date.now().toString(36)}-${(findingSeq+
 export function runGuardrails(ctx: GuardrailContext): Finding[] {
   const { job, draft, sources } = ctx;
   const findings: Finding[] = [];
-  const variantText = [...(draft.variants?.x ?? []), draft.variants?.linkedin ?? ""].join("\n\n");
+  const variantText = [...(draft.variants?.x ?? []), draft.variants?.xSingle ?? "", draft.variants?.linkedin ?? ""].join("\n\n");
   const everything = `${draft.title}\n${draft.dek}\n${draft.bodyMarkdown}\n${draft.announcement}\n${variantText}`;
 
   // 1. Publication boundaries: private names must never ship.
@@ -565,6 +566,7 @@ export function localWrite(args: {
       `What we saw: ${lead}.`.slice(0, 280),
       `The full piece, with a source beside every claim: {{url}}`,
     ],
+    xSingle: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}. What the evidence supports, and where it stops: {{url}}`.slice(0, 280),
     linkedin: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\n${lead}.\n\nI wrote up what the evidence supports — and where it stops — for ${audience}.\n\nWhat would you add?\n\n{{url}}`.slice(0, 3000),
   };
   const draft: DraftOutput = {
@@ -574,7 +576,7 @@ export function localWrite(args: {
     announcement: `New essay: ${scrubPrivate(title, job.privateTerms)}. Sourced, reviewed, and published. {{url}}`.slice(0, 280),
     claims,
     corrections,
-    variants: { x: variants.x.map((t) => scrubPrivate(t, job.privateTerms)), linkedin: scrubPrivate(variants.linkedin, job.privateTerms) },
+    variants: { x: variants.x.map((t) => scrubPrivate(t, job.privateTerms)), xSingle: scrubPrivate(variants.xSingle, job.privateTerms), linkedin: scrubPrivate(variants.linkedin, job.privateTerms) },
   };
   return draft;
 }

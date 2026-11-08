@@ -33,3 +33,20 @@ export async function transcribe(bytes: Uint8Array, contentType: string, filenam
   if (!res.ok) throw new ProviderError("openai", res.status, text);
   return text.trim();
 }
+
+/** Generate one image with OpenAI; returns compressed WebP bytes. */
+export async function generateImage(prompt: string): Promise<{ bytes: Buffer; mime: string }> {
+  const key = env().OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY is not set");
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: env().OPENAI_IMAGE_MODEL, prompt, size: "1536x1024", n: 1, output_format: "webp", output_compression: 82 }),
+    signal: AbortSignal.timeout(180_000),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new ProviderError("openai", res.status, text);
+  const b64 = (JSON.parse(text) as { data?: Array<{ b64_json?: string }> }).data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI returned no image");
+  return { bytes: Buffer.from(b64, "base64"), mime: "image/webp" };
+}

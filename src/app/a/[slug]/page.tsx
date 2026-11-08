@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { Mark } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
 import { getDb } from "@/lib/db/client";
-import { drafts, jobs, publications, sources } from "@/lib/db/schema";
+import { drafts, images, jobs, publications, sources } from "@/lib/db/schema";
 
 export default function ArticlePage(props: PageProps<"/a/[slug]">) {
   return (
@@ -25,12 +25,13 @@ async function load(slug: string) {
     .where(and(eq(publications.slug, slug), eq(publications.destination, "web"), inArray(publications.status, ["publishing", "published"])))
     .limit(1);
   if (!pub) return null;
-  const [[draft], [job], srcs] = await Promise.all([
+  const [[draft], [job], srcs, imgs] = await Promise.all([
     db.select().from(drafts).where(eq(drafts.id, pub.draftId)).limit(1),
     db.select({ founderName: jobs.founderName, audience: jobs.audience }).from(jobs).where(eq(jobs.id, pub.jobId)).limit(1),
     db.select().from(sources).where(eq(sources.jobId, pub.jobId)),
+    db.select({ id: images.id, slot: images.slot }).from(images).where(and(eq(images.jobId, pub.jobId), eq(images.status, "ready"))),
   ]);
-  return { pub, draft: draft!, job: job!, sources: srcs };
+  return { pub, draft: draft!, job: job!, sources: srcs, images: imgs };
 }
 
 async function Article({ params }: PageProps<"/a/[slug]">) {
@@ -82,9 +83,26 @@ async function Article({ params }: PageProps<"/a/[slug]">) {
           <h1 className="mt-5 text-[2.25rem] font-medium leading-[1.1] tracking-[-0.03em] text-fg md:text-[2.75rem]">{draft.title}</h1>
           <p className="mt-5 text-lg leading-relaxed text-muted">{draft.dek}</p>
           {job.founderName ? <p className="mt-6 text-sm text-fg-2">By {job.founderName}</p> : null}
+          {data.images.find((i) => i.slot === "hero") ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`/api/images/${data.images.find((i) => i.slot === "hero")!.id}`} alt="" className="mt-10 aspect-[3/2] w-full rounded-2xl object-cover" />
+          ) : null}
           <div className="mt-10 border-t border-line pt-2">
             <Markdown source={draft.bodyMarkdown} skipSources />
           </div>
+          {data.images.filter((i) => i.slot !== "hero").length ? (
+            <div className="mt-12 grid gap-4 sm:grid-cols-2">
+              {data.images
+                .filter((i) => i.slot !== "hero")
+                .map((i) => (
+                  <figure key={i.id}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/api/images/${i.id}`} alt="" className="aspect-[3/2] w-full rounded-xl object-cover" />
+                    <figcaption className="mt-2 text-xs text-subtle">{i.slot}</figcaption>
+                  </figure>
+                ))}
+            </div>
+          ) : null}
           <section id="sources" className="mt-14 border-t border-line pt-8">
             <h2 className="text-sm font-medium text-fg">Sources</h2>
             <ol className="mt-4 space-y-3 text-sm">

@@ -13,6 +13,13 @@ import { links } from "@/lib/links";
 import { verifyLink } from "@/lib/security";
 import { orderView } from "@/lib/views";
 import { ApprovePanel, EditPanel } from "./review-actions";
+import { GenerateButton } from "./images-panel";
+import { desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db/client";
+import { images } from "@/lib/db/schema";
+import { isLive } from "@/lib/env";
+import { stripe } from "@/lib/integrations/stripe";
+import { grantImageCredits } from "@/lib/workflow/images";
 
 export const metadata: Metadata = { title: "Review your article", robots: { index: false, follow: false } };
 
@@ -32,13 +39,27 @@ export default function ReviewPage(props: PageProps<"/review/[token]">) {
   );
 }
 
-async function Review({ params }: PageProps<"/review/[token]">) {
+async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
   await connection();
   const { token } = await params;
   const jobId = verifyLink(token, "review");
   if (!jobId) notFound();
+  // Returning from the images Checkout: grant here too (idempotent with the webhook).
+  const sp = await searchParams;
+  if (typeof sp.session_id === "string" && sp.images === "1" && isLive("stripe")) {
+    const session = await stripe().checkout.sessions.retrieve(sp.session_id);
+    if (session.metadata?.job_id === jobId && session.metadata?.addon === "images_10" && session.payment_status === "paid") {
+      await grantImageCredits(jobId, session.id, session.amount_total);
+    }
+  }
   const v = await orderView(jobId);
   if (!v?.draft) notFound();
+  const db = await getDb();
+  const jobImages = await db
+    .select({ id: images.id, slot: images.slot, status: images.status, error: images.error })
+    .from(images)
+    .where(eq(images.jobId, jobId))
+    .orderBy(desc(images.createdAt));
   const { job, draft, review, sources, web } = v;
   const ready = job.stage === "READY_FOR_APPROVAL" && review?.outcome === "READY_FOR_APPROVAL";
   const cited = new Set([...draft.bodyMarkdown.matchAll(/\[(S\d+)\]/g)].map((m) => m[1]!));
@@ -55,15 +76,25 @@ async function Review({ params }: PageProps<"/review/[token]">) {
             <StageChip stage={job.stage} />
             <Chip>Version {draft.version}</Chip>
             {draft.author === "founder_edit" ? <Chip tone="blue">Your edit</Chip> : null}
-            <AutoRefresh tickUrl={`/api/orders/${job.id}/tick?t=${encodeURIComponent(token)}`} active={IN_PROGRESS.includes(job.stage)} />
+            <AutoRefresh tickUrl={`/api/orders/${job.id}/tick?t=${encodeURIComponent(token)}`} active={IN_PROGRESS.includes(job.stage) || jobImages.some((i) => i.status === "generating")} />
           </div>
           <h1 className="text-[2.25rem] font-medium leading-[1.12] tracking-[-0.03em] text-fg">{draft.title}</h1>
           <p className="mt-4 text-lg leading-relaxed text-muted">{draft.dek}</p>
+          {jobImages.find((i) => i.slot === "hero" && i.status === "ready") ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`/api/images/${jobImages.find((i) => i.slot === "hero" && i.status === "ready")!.id}`} alt="" className="mt-8 aspect-[3/2] w-full rounded-2xl object-cover" />
+          ) : null}
           <div className="mt-8 border-t border-line pt-2">
             <Markdown source={draft.bodyMarkdown} skipSources opts={{ citeHref: (ref) => `#src-${ref}` }} />
           </div>
           <div className="mt-12 space-y-4">
             <MonoLabel>How it will be announced</MonoLabel>
+            {draft.variants.xSingle ? (
+              <div className="rounded-xl border border-line bg-panel p-5">
+                <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">X · one post</p>
+                <p className="whitespace-pre-wrap text-sm text-fg-2">{draft.variants.xSingle.replace("{{url}}", web?.url ?? links.article(articleSlug(draft.title, job.id)))}</p>
+              </div>
+            ) : null}
             {draft.variants.x?.length ? (
               <div className="rounded-xl border border-line bg-panel p-5">
                 <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">X · thread of {draft.variants.x.length}</p>
@@ -150,6 +181,46 @@ async function Review({ params }: PageProps<"/review/[token]">) {
                 ))}
             </ul>
             <p className="mt-2 text-xs text-subtle">Optional — use “Edit the text” to apply any you agree with.</p>
+          </section>
+        ) : null}
+
+        {["READY_FOR_APPROVAL", "WAITING_FOR_FOUNDER", "REVIEWING", "WRITING"].includes(job.stage) ? (
+          <section className="rounded-xl border border-line bg-panel p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <MonoLabel>Images</MonoLabel>
+              <span className="text-xs text-muted">{job.imageCredits} credit{job.imageCredits === 1 ? "" : "s"} left</span>
+            </div>
+            {job.imageCredits > 0 ? (
+              <div className="space-y-2">
+                <GenerateButton token={token} slot="hero" label="Generate a header image" />
+                {[...draft.bodyMarkdown.matchAll(/^##\s+(.+)$/gm)]
+                  .map((m) => m[1]!.trim())
+                  .filter((h) => !/^sources$/i.test(h))
+                  .slice(0, 4)
+                  .map((h) => (
+                    <GenerateButton key={h} token={token} slot={h} label={`Image for “${h}”`} />
+                  ))}
+              </div>
+            ) : (
+              <a href={`/api/checkout/${job.id}/images?t=${encodeURIComponent(token)}`} className="block rounded-lg bg-accent px-3 py-2.5 text-center text-sm font-semibold text-[#140a05] hover:bg-[#ff6f3a]">
+                Add images · 10 credits for $5
+              </a>
+            )}
+            {jobImages.length ? (
+              <ul className="mt-4 grid grid-cols-2 gap-2">
+                {jobImages.map((i) => (
+                  <li key={i.id} className="overflow-hidden rounded-lg border border-line bg-panel-2">
+                    {i.status === "ready" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`/api/images/${i.id}`} alt="" className="aspect-[3/2] w-full object-cover" />
+                    ) : (
+                      <div className="flex aspect-[3/2] items-center justify-center p-2 text-center text-[11px] text-muted">{i.status === "failed" ? "Failed · credit refunded" : "Generating…"}</div>
+                    )}
+                    <p className="truncate px-2 py-1 text-[11px] text-subtle">{i.slot === "hero" ? "Header" : i.slot}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </section>
         ) : null}
 

@@ -52,6 +52,17 @@ export async function POST(req: Request) {
     await mark("ignored", `payment_status ${session.payment_status}`, jobId);
     return NextResponse.json({ received: true });
   }
+  if (session.metadata?.addon === "images_10") {
+    try {
+      const { grantImageCredits } = await import("@/lib/workflow/images");
+      const granted = await grantImageCredits(jobId, session.id, session.amount_total);
+      await mark("processed", granted ? "image credits granted" : "image credits already granted", jobId);
+      return NextResponse.json({ received: true });
+    } catch (err) {
+      await mark("failed", (err as Error).message.slice(0, 500), jobId);
+      return NextResponse.json({ error: "grant failed" }, { status: 500 });
+    }
+  }
   try {
     const res = await fulfillPayment({ jobId, checkoutSessionId: session.id, amountTotal: session.amount_total });
     await mark("processed", res.fulfilled ? "fulfilled" : "already fulfilled", jobId);

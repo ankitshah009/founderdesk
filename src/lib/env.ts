@@ -51,6 +51,7 @@ const schema = z.object({
 
   OPENAI_API_KEY: optional,
   OPENAI_TRANSCRIBE_MODEL: z.string().default("gpt-4o-transcribe"),
+  OPENAI_IMAGE_MODEL: z.string().default("gpt-image-2"),
 
   MOBILERUN_API_KEY: optional,
   MOBILERUN_BASE_URL: z.string().url().default("https://api.mobilerun.ai/v1"),

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  customType,
   boolean,
   index,
   integer,
@@ -62,7 +63,7 @@ export type Finding = {
 export type Claim = { text: string; sourceIds: string[] };
 
 /** Platform-native versions of the announcement, written and approved per channel. */
-export type ChannelVariants = { x?: string[]; linkedin?: string };
+export type ChannelVariants = { x?: string[]; xSingle?: string; linkedin?: string };
 
 export const jobs = pgTable(
   "jobs",
@@ -92,6 +93,7 @@ export const jobs = pgTable(
     paidAt: timestamp("paid_at", { withTimezone: true }),
     revisionCycles: integer("revision_cycles").notNull().default(0),
     sourceSeq: integer("source_seq").notNull().default(0),
+    imageCredits: integer("image_credits").notNull().default(0),
     founderReplies: jsonb("founder_replies").$type<FounderReply[]>().notNull().default([]),
     openQuestions: jsonb("open_questions").$type<string[]>().notNull().default([]),
     destinations: jsonb("destinations").$type<string[]>().notNull().default(["web"]),
@@ -187,6 +189,8 @@ export const approvals = pgTable(
     contentHash: text("content_hash").notNull(),
     destination: text("destination").notNull(),
     action: text("action").$type<"publish">().notNull(),
+    /** Destination-specific choice made at approval, e.g. X "single" or "thread". */
+    option: text("option"),
     approvedBy: text("approved_by").notNull(),
     approvedAt: timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -262,6 +266,7 @@ export const DISPATCH_KINDS = [
   "review",
   "publish",
   "mobile_check",
+  "image",
 ] as const;
 export type DispatchKind = (typeof DISPATCH_KINDS)[number];
 
@@ -387,3 +392,34 @@ export const authEvents = pgTable(
   },
   (t) => [index("auth_events_email_idx").on(t.email, t.createdAt)],
 );
+
+/* ── Images add-on ─────────────────────────────────────────────────────────── */
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** One row per paid image pack; the unique session id makes grants idempotent. */
+export const imageCreditGrants = pgTable("image_credit_grants", {
+  checkoutSessionId: text("checkout_session_id").primaryKey(),
+  jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  credits: integer("credits").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const images = pgTable(
+  "images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+    slot: text("slot").notNull(), // "hero" or the section heading it illustrates
+    prompt: text("prompt").notNull(),
+    status: text("status").$type<"generating" | "ready" | "failed">().notNull().default("generating"),
+    mime: text("mime"),
+    data: bytea("data"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("images_job_idx").on(t.jobId)],
+);
+
+export type ImageRow = typeof images.$inferSelect;

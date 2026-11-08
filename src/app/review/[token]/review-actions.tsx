@@ -37,10 +37,22 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social 
           </span>
         </label>
         {social.map((s) => (
-          <label key={s.id} className="flex items-center gap-2.5 text-fg-2">
-            <input type="checkbox" name="destinations" value={s.id} className="accent-white" />
-            Announce on {s.label}
-          </label>
+          <div key={s.id}>
+            <label className="flex items-center gap-2.5 text-fg-2">
+              <input type="checkbox" name="destinations" value={s.id} className="accent-white" />
+              Announce on {s.label}
+            </label>
+            {s.id === "x" ? (
+              <div className="mt-2 ml-6 flex gap-4 text-xs text-fg-2" role="radiogroup" aria-label="X format">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" name="xFormat" value="single" defaultChecked className="accent-white" /> One post
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" name="xFormat" value="thread" className="accent-white" /> Thread
+                </label>
+              </div>
+            ) : null}
+          </div>
         ))}
       </fieldset>
       {state?.error ? (

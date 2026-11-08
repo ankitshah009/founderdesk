@@ -15,7 +15,7 @@ export class GateError extends Error {}
 
 /* ── Founder actions (called from the review page and MCP) ─────────────────── */
 
-export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[] }) {
+export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread" }) {
   const job = await getJob(args.jobId);
   if (!job) throw new GateError("Order not found.");
   if (job.stage !== "READY_FOR_APPROVAL") throw new GateError("This article is not waiting for approval.");
@@ -30,7 +30,17 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
   const db = await getDb();
   await db
     .insert(approvals)
-    .values(destinations.map((destination) => ({ jobId: job.id, draftId: draft.id, contentHash: draft.contentHash, destination, action: "publish" as const, approvedBy: job.founderEmail })))
+    .values(
+      destinations.map((destination) => ({
+        jobId: job.id,
+        draftId: draft.id,
+        contentHash: draft.contentHash,
+        destination,
+        action: "publish" as const,
+        option: destination === "x" ? (args.xFormat === "single" ? "single" : "thread") : null,
+        approvedBy: job.founderEmail,
+      })),
+    )
     .onConflictDoNothing();
   if (await transition(job.id, ["READY_FOR_APPROVAL"], "PUBLISHING", null, { destinations })) {
     await enqueue(job.id, "publish", `${job.id}:publish:web:${draft.id}`, { destination: "web", draftId: draft.id });
@@ -146,7 +156,14 @@ registerHandler("publish", {
     if (existing && !existing.externalId) {
       throw new PermanentError(`An earlier ${adapter.label} post attempt may have gone through. Check the account before retrying.`);
     }
-    const variant = destination === "x" ? draft.variants.x : destination === "linkedin" ? draft.variants.linkedin : undefined;
+    const variant =
+      destination === "x"
+        ? approval.option === "single"
+          ? (draft.variants.xSingle ?? draft.announcement)
+          : draft.variants.x
+        : destination === "linkedin"
+          ? draft.variants.linkedin
+          : undefined;
     const posts = Array.isArray(variant)
       ? variant.map((t) => renderAnnouncement(t, web.url!, adapter.maxLength))
       : [renderAnnouncement(variant ?? draft.announcement, web.url!, adapter.maxLength)];

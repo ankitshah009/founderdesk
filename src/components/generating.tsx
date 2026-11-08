@@ -3,7 +3,7 @@ import { nowMs } from "@/lib/clock";
 
 /** Fallback step durations (seconds) until there is history to learn from. */
 const DEFAULT: Record<DispatchKind, number> = {
-  research_plan: 25, source_search: 15, source_fetch: 10, research_synthesis: 35, write: 60, review: 35, publish: 8, mobile_check: 90,
+  research_plan: 25, source_search: 15, source_fetch: 10, research_synthesis: 35, write: 60, review: 35, publish: 8, mobile_check: 90, image: 30,
 };
 const REMAINING: Partial<Record<JobStage, DispatchKind[]>> = {
   PAID: ["research_plan", "source_fetch", "research_synthesis", "write", "review"],
