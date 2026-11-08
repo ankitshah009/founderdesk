@@ -16,7 +16,7 @@ export function Nav() {
           <Link href="/articles" className="hover:text-fg">Articles</Link>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/desk" className="hidden px-2 text-sm text-fg-2 hover:text-fg sm:inline">Desk</Link>
+          <Link href="/signin" className="hidden px-2 text-sm text-fg-2 hover:text-fg sm:inline">Your orders</Link>
           <ButtonLink href="/start">Start an article</ButtonLink>
         </div>
       </div>
@@ -29,7 +29,7 @@ export function Announcement() {
     <div className="border-b border-line">
       <Link href="/start" className="group mx-auto flex max-w-[1072px] items-center justify-center gap-2.5 px-4 py-2.5 text-sm text-fg-2">
         <span className="shrink-0 whitespace-nowrap rounded-md bg-accent-tint px-2 py-0.5 text-accent-ink">First article</span>
-        <span className="truncate">Email your notes, approve the exact text — $49</span>
+        <span className="truncate">Email your notes, approve the exact text — $9</span>
         <ArrowRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />
       </Link>
     </div>

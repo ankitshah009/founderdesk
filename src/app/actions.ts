@@ -20,7 +20,7 @@ export type ActionState = { error?: string; ok?: string } | null;
 const startSchema = z.object({
   name: z.string().trim().max(120).optional(),
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
-  subject: z.string().trim().min(3, "Give the article a working title").max(160),
+  subject: z.string().trim().max(160).optional(),
   notes: z.string().trim().min(40, "Add a few sentences of notes so we know what to argue").max(20_000),
   links: z.string().trim().max(4000).optional(),
   boundaries: z.string().trim().max(1000).optional(),
@@ -31,7 +31,7 @@ export async function startArticle(_: ActionState, form: FormData): Promise<Acti
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
   const v = parsed.data;
   const body = [v.notes, v.links ? `\nLinks:\n${v.links}` : "", v.boundaries ? `\n${v.boundaries}` : ""].join("\n");
-  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject: v.subject, body });
+  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject: v.subject || null, body });
   kick();
   redirect(links.orderPath(job.id));
 }
@@ -146,4 +146,31 @@ export async function deskReply(_: ActionState, form: FormData): Promise<ActionS
 export async function deskRun(): Promise<void> {
   await assertDesk();
   kick();
+}
+
+/**
+ * Passwordless sign-in: email a signed 7-day link to the "your orders" page,
+ * sent from the business inbox. The response never reveals whether an email
+ * has orders.
+ */
+export async function requestSignIn(_: ActionState, form: FormData): Promise<ActionState> {
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Enter a valid email address." };
+  const done = { ok: `If ${email} has orders with us, a sign-in link is on its way. It works for 7 days.` };
+  const { getDb } = await import("@/lib/db/client");
+  const { jobs } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const db = await getDb();
+  const [any] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.founderEmail, email)).limit(1);
+  if (!any) return done;
+  if (!isLive("agentmail")) return { ok: `Email isn't connected on this deployment. Your link: ${links.account(email)}` };
+  const { sendMessage } = await import("@/lib/integrations/agentmail");
+  await sendMessage({
+    inboxId: env().AGENTMAIL_INBOX_ID!,
+    to: email,
+    subject: "Your FounderDesk sign-in link",
+    text: `Here's your sign-in link. It shows every order and its progress, and works for 7 days:\n\n${links.account(email)}\n\nIf you didn't ask for this, you can ignore it.\n\n— FounderDesk`,
+    labels: ["founderdesk", "signin"],
+  });
+  return done;
 }

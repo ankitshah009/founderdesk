@@ -1,0 +1,1 @@
+ALTER TABLE "jobs" ALTER COLUMN "amount_cents" SET DEFAULT 900;

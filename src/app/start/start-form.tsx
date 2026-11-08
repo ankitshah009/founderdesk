@@ -2,48 +2,52 @@
 
 import { useActionState } from "react";
 import { startArticle, type ActionState } from "@/app/actions";
-import { Button, Field, inputClass } from "@/components/ui";
+import { Button, inputClass } from "@/components/ui";
 
+/**
+ * One box first (what you want to say), then where to reach you. Title, links
+ * and privacy notes are optional and tucked away — the brief parser finds the
+ * thesis, audience, links and boundaries in the notes themselves.
+ */
 export function StartForm() {
   const [state, action, pending] = useActionState<ActionState, FormData>(startArticle, null);
   return (
     <form action={action} className="space-y-5">
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Your name">
-          <input name="name" autoComplete="name" className={inputClass} placeholder="Dana Reyes" />
-        </Field>
-        <Field label="Email" hint="We reply here, and your replies land on this order.">
-          <input name="email" type="email" required autoComplete="email" className={inputClass} placeholder="dana@company.com" />
-        </Field>
-      </div>
-      <Field label="Working title">
-        <input name="subject" required className={inputClass} placeholder="Article on AI customer support" />
-      </Field>
-      <Field label="Your notes" hint="What you want to argue, who it's for, and what you've seen first-hand. Numbers are welcome — we'll check them.">
+      <label className="block">
+        <span className="sr-only">Your notes</span>
         <textarea
           name="notes"
           required
-          rows={9}
-          className={`${inputClass} resize-y leading-relaxed`}
-          placeholder={"I want to write about why founders should start with narrow support workflows. My audience is early-stage SaaS founders.\n\n- We saw first-response time improve by 60% in six weeks.\n- …"}
+          rows={10}
+          autoFocus
+          className={`${inputClass} resize-y rounded-2xl p-5 text-base leading-relaxed`}
+          placeholder={
+            "What do you want to argue, and who is it for?\n\nE.g. I want to write about why founders should start with narrow support workflows. My audience is early-stage SaaS founders. We cut first-response time by 60% in six weeks. Paste links anywhere in here."
+          }
         />
-      </Field>
-      <Field label="Links (optional)" hint="One per line. We fetch them and quote only what they actually say.">
-        <textarea name="links" rows={3} className={`${inputClass} resize-y font-mono text-xs`} placeholder="https://…" />
-      </Field>
-      <Field label="Boundaries (optional)">
-        <input name="boundaries" className={inputClass} placeholder="Please keep the customer names private." />
-      </Field>
+      </label>
+      <details className="group rounded-xl border border-line px-4 py-3 text-sm">
+        <summary className="cursor-pointer list-none text-fg-2 group-open:mb-3">+ Add a title, links or privacy notes (optional)</summary>
+        <div className="space-y-3">
+          <input name="subject" className={inputClass} placeholder="Working title" />
+          <textarea name="links" rows={2} className={`${inputClass} font-mono text-xs`} placeholder="Links, one per line" />
+          <input name="boundaries" className={inputClass} placeholder="e.g. Please keep customer names private." />
+        </div>
+      </details>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <input name="email" type="email" required autoComplete="email" className={`${inputClass} sm:flex-1`} placeholder="Your email — we send the draft here" />
+        <input name="name" autoComplete="name" className={`${inputClass} sm:w-48`} placeholder="Name (optional)" />
+      </div>
       {state?.error ? (
         <p role="alert" className="rounded-lg border border-red/30 bg-red/10 px-3 py-2 text-sm text-red">
           {state.error}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-3 pt-2">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Creating your order…" : "Continue to payment"}
+      <div className="flex flex-wrap items-center gap-4">
+        <Button type="submit" disabled={pending} className="px-6 py-3 text-base">
+          {pending ? "Starting…" : "Continue — $9"}
         </Button>
-        <span className="text-xs text-muted">$49 · nothing publishes without your approval</span>
+        <span className="text-sm text-muted">Nothing publishes without your approval.</span>
       </div>
     </form>
   );

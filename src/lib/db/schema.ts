@@ -81,7 +81,7 @@ export const jobs = pgTable(
     stage: text("stage").$type<JobStage>().notNull().default("AWAITING_PAYMENT"),
     stageReason: text("stage_reason"),
     paymentStatus: text("payment_status").$type<"unpaid" | "paid">().notNull().default("unpaid"),
-    amountCents: integer("amount_cents").notNull().default(4900),
+    amountCents: integer("amount_cents").notNull().default(900),
     currency: text("currency").notNull().default("usd"),
     checkoutSessionId: text("checkout_session_id"),
     checkoutUrl: text("checkout_url"),

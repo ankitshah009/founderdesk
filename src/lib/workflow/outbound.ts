@@ -42,6 +42,7 @@ export const templates = {
         links.checkout(job.id),
         "",
         `Track your order: ${links.order(job.id)}`,
+        `All your orders: ${links.account(job.founderEmail)}`,
         "",
         "Reply to this email at any time; replies are attached to this order.",
         "— FounderDesk",

@@ -3,6 +3,7 @@ import "./handlers";
 import "./publish";
 import { nextWakeAt, step } from "./engine";
 import { deliverOutbound } from "./outbound";
+import { resumeStaleWaits } from "./intake";
 
 /**
  * Drive the workflow for up to `budgetMs`: deliver queued mail, run every
@@ -12,6 +13,7 @@ import { deliverOutbound } from "./outbound";
 export async function runWork({ budgetMs = 45_000, idleExitMs = 20_000 } = {}): Promise<{ steps: number }> {
   const deadline = Date.now() + budgetMs;
   let steps = 0;
+  await resumeStaleWaits();
   while (Date.now() < deadline) {
     await deliverOutbound();
     let progressed = false;

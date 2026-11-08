@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { jobs, providerEvents, type FounderReply, type Job } from "@/lib/db/schema";
 import { env } from "@/lib/env";
@@ -165,4 +165,26 @@ export async function processInboundEvent(eventId: string) {
 
 export async function findJob(id: string) {
   return getJob(id);
+}
+
+export const AUTO_REPLY =
+  "No answer received in time — use the supported figure from the sources, and attribute to the founder or cut anything unsupported.";
+
+/**
+ * Autonomy: an order never waits on the founder forever. After
+ * FOUNDER_WAIT_MINUTES it continues with the conservative choice (the figure
+ * the source supports; attribute or cut the rest). A later real reply still
+ * applies before approval if the order hasn't been approved yet.
+ */
+export async function resumeStaleWaits(): Promise<number> {
+  const db = await getDb();
+  const cutoff = new Date(Date.now() - env().FOUNDER_WAIT_MINUTES * 60_000);
+  // Claim atomically (bump updatedAt) so concurrent runs never double-answer.
+  const waiting = await db
+    .update(jobs)
+    .set({ updatedAt: new Date() })
+    .where(and(eq(jobs.stage, "WAITING_FOR_FOUNDER"), lt(jobs.updatedAt, cutoff)))
+    .returning();
+  for (const job of waiting) await recordFounderReply(job, { text: AUTO_REPLY, messageId: null });
+  return waiting.length;
 }

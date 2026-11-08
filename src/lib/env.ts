@@ -26,7 +26,7 @@ const schema = z.object({
   STRIPE_SECRET_KEY: optional,
   STRIPE_WEBHOOK_SECRET: optional,
   STRIPE_PRICE_ID: optional,
-  OFFER_AMOUNT_CENTS: z.coerce.number().int().positive().default(4900),
+  OFFER_AMOUNT_CENTS: z.coerce.number().int().positive().default(900),
 
   AGENTMAIL_API_KEY: optional,
   AGENTMAIL_INBOX_ID: optional,
@@ -57,6 +57,7 @@ const schema = z.object({
   LINKEDIN_ACCESS_TOKEN: optional,
   LINKEDIN_AUTHOR_URN: optional,
 
+  FOUNDER_WAIT_MINUTES: z.coerce.number().int().min(1).default(30),
   MAX_REVISION_CYCLES: z.coerce.number().int().min(0).max(5).default(2),
 });
 

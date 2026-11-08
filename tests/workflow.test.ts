@@ -215,3 +215,20 @@ describe("FounderDesk workflow (simulated providers, real Postgres via PGlite)",
     expect(b).toBeNull();
   });
 });
+
+describe("autonomy", () => {
+  it("resumes an order the founder hasn't answered, exactly once, with the conservative choice", async () => {
+    const { createJob, resumeStaleWaits, AUTO_REPLY } = await import("@/lib/workflow/intake");
+    const db = await getDb();
+    const job = await createJob({ channel: "web", founderEmail: "slow@founder.test", subject: "Stale", body: "I want to write about why waiting is bad for orders. My audience is founders." });
+    const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: "T", dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A", contentHash: "h" }).returning();
+    await db.update(jobs).set({ stage: "WAITING_FOR_FOUNDER", openQuestions: ["Q?"], updatedAt: new Date(Date.now() - 2 * 3600_000) }).where(eq(jobs.id, job.id));
+    const [a, b] = await Promise.all([resumeStaleWaits(), resumeStaleWaits()]);
+    expect(a + b).toBe(1);
+    const after = await getJob(job.id);
+    expect(after!.stage).toBe("REVIEWING");
+    expect(after!.founderReplies.map((r) => r.text)).toEqual([AUTO_REPLY]);
+    const reviews = await db.select().from(dispatches).where(eq(dispatches.jobId, job.id));
+    expect(reviews.some((r) => r.kind === "review" && (r.input as { draftId?: string }).draftId === d!.id)).toBe(true);
+  });
+});

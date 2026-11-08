@@ -386,7 +386,7 @@ function Pricing() {
           <div className="panel flex flex-col p-6 md:p-8">
             <p className="text-sm text-muted">First article</p>
             <p className="mt-3 flex items-baseline gap-2">
-              <span className="text-5xl font-medium tracking-[-0.04em] text-fg">$49</span>
+              <span className="text-5xl font-medium tracking-[-0.04em] text-fg">$9</span>
               <span className="text-sm text-muted">one-time</span>
             </p>
             <ul className="mt-8 space-y-3 text-sm text-fg-2">

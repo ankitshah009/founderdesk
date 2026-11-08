@@ -39,7 +39,7 @@ export default function StartPage() {
             <div className="panel p-5 text-sm">
               <p className="text-fg">What happens next</p>
               <ol className="mt-3 space-y-2.5 text-muted">
-                <li>1. You pay $49 — research starts immediately.</li>
+                <li>1. You pay $9 — research starts immediately.</li>
                 <li>2. If a number or claim needs you, we ask by email.</li>
                 <li>3. You get a private page to approve or edit the exact text.</li>
                 <li>4. We publish it, confirm it&apos;s live, and check it on a phone.</li>

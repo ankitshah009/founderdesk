@@ -111,7 +111,7 @@ function Panel({ id }: { id: Id }) {
             I want to write about why founders should start with narrow support workflows. Here are my notes, a pilot report, and two links. My audience is early-stage SaaS founders. Please keep the customer names private.
           </Bubble>
           <Bubble who="FounderDesk">
-            We have your brief. One researched article for early-stage SaaS founders, every claim linked to a source, nothing published until you approve the exact text. Customer names stay private. <span className="text-fg">Pay $49 to start research →</span>
+            We have your brief. One researched article for early-stage SaaS founders, every claim linked to a source, nothing published until you approve the exact text. Customer names stay private. <span className="text-fg">Pay $9 to start research →</span>
           </Bubble>
         </div>
       </Window>
