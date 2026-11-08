@@ -14,6 +14,11 @@ import { links } from "@/lib/links";
 const money = (cents: number) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
 const hello = (job: Job) => (job.founderName ? `Hi ${job.founderName.split(" ")[0]},` : "Hi,");
 const subjectFor = (job: Job) => `Re: ${job.topic}`;
+/** A parsed thesis is only shown if it reads like a claim, not a fragment. */
+export const usableThesis = (job: Job) => {
+  const t = (job.thesis ?? "").trim();
+  return t.split(/\s+/).length >= 5 && !/^(an?|the)?\s*(article|post|essay|piece)\b/i.test(t) ? t : null;
+};
 
 export const templates = {
   acknowledgement(job: Job) {
@@ -24,7 +29,7 @@ export const templates = {
         "",
         "We have your brief. Here is exactly what we will deliver:",
         "",
-        `• One researched article arguing: ${job.thesis ?? job.topic}`,
+        usableThesis(job) ? `• One researched article arguing: ${usableThesis(job)}` : `• One researched article on: ${job.topic}`,
         `• Written for: ${job.audience ?? "the audience you described"}`,
         "• Every factual claim linked to a source, and a reviewer check against those sources",
         "• A short announcement to share it",
@@ -54,7 +59,7 @@ export const templates = {
   question(job: Job, questions: string[]) {
     return {
       subject: subjectFor(job),
-      text: `${hello(job)}\n\nOur reviewer needs one thing from you before the article can go to review:\n\n${questions.map((q) => `• ${q}`).join("\n")}\n\nJust reply to this email. If you have a report or data that supports your number, attach it.\n\n— FounderDesk`,
+      text: `${hello(job)}\n\nYour draft is written. Before it's final, our reviewer needs one answer from you:\n\n${questions.map((q) => `• ${q}`).join("\n")}\n\nJust reply to this email (attach a report or data if you have one). You can read the current draft here:\n${links.review(job.id)}\n\n— FounderDesk`,
     };
   },
   still_waiting(job: Job, questions: string[]) {

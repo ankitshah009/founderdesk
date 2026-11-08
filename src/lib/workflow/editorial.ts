@@ -67,9 +67,9 @@ export const AGENT_SYSTEM = {
   researcher:
     "You are the researcher on a small editorial desk that publishes articles for startup founders. You never invent sources, numbers or quotations. You only cite passages that appear verbatim in the source excerpts you are given, and you always say which population or sample a finding applies to. Respect the founder's publication boundaries.",
   writer:
-    "You are the writer on an editorial desk. You write in the founder's first-person voice, plainly and specifically, for the stated audience. Every factual claim must cite a source reference like [S2] that supports it. Founder-provided observations may be stated as the founder's own experience. Never include anything the founder asked to keep private. Output Markdown with ## section headings and finish with a '## Sources' section listing each cited reference.",
+    "You are the writer on an editorial desk. You write in the founder's first-person voice, plainly and specifically, for the stated audience. Every factual claim must cite a source reference like [S2] that supports it. Founder-provided observations may be stated as the founder's own experience. If a claim has no supporting source, attribute it to the founder (“in our experience…”) or cut it — never invent support, and never stop to ask. Never include anything the founder asked to keep private. Output Markdown with ## section headings and finish with a '## Sources' section listing each cited reference.",
   reviewer:
-    "You are the reviewer on an editorial desk. Check the draft against the evidence and the publication requirements. Flag claims whose numbers or scope go beyond what the cited passage supports, quote the passage, and propose a precise replacement sentence. Flag any boundary violation. Decide one outcome: READY_FOR_APPROVAL, NEEDS_REVISION (the writer can fix it from the evidence), NEEDS_FOUNDER_INPUT (only the founder can resolve it — ask one specific question), or UNABLE_TO_COMPLETE.",
+    "You are the reviewer on an editorial desk. Check the draft against the evidence and the publication requirements. Flag claims whose numbers or scope go beyond what the cited passage supports, quote the passage, and propose a precise replacement sentence. Flag any boundary violation. Decide one outcome: READY_FOR_APPROVAL, NEEDS_REVISION (the writer can fix it from the evidence), NEEDS_FOUNDER_INPUT, or UNABLE_TO_COMPLETE. Strongly prefer NEEDS_REVISION: for an unsupported claim, propose attributing it to the founder, softening it, or cutting it. Use NEEDS_FOUNDER_INPUT only when a specific number the founder stated contradicts a source, and then ask exactly one question. Never ask about wording, tone, or details the article can do without.",
 } as const;
 
 type SourceView = Pick<Source, "ref" | "kind" | "url" | "title" | "content" | "snippet" | "status">;
@@ -371,14 +371,25 @@ export function decideOutcome(args: {
     return res.kind === "unresolved" ? f : { ...f, resolved: true, severity: "minor" as const };
   });
   const blocking = findings.filter((f) => f.severity === "blocking" && !f.resolved);
-  const needsFounder = blocking.filter((f) => f.question);
+  // Only a concrete conflict between the founder's own figure and a source
+  // stops the order to ask them — and only once per order. Everything else
+  // (missing support, vague scope) the writer fixes by attributing, softening
+  // or cutting the claim.
+  // After the founder has replied, keep waiting only on the question already
+  // asked (an unrelated reply doesn't answer it) — never open new questions.
+  const replied = args.job.founderReplies.length > 0;
+  const needsFounder = blocking.filter(
+    (f) => f.kind === "figure_mismatch" && f.question && (!replied || args.job.openQuestions.includes(f.question)),
+  );
   if (args.agentOutcome === "UNABLE_TO_COMPLETE") return { outcome: "UNABLE_TO_COMPLETE", founderQuestions: [], findings };
-  if (needsFounder.length) return { outcome: "NEEDS_FOUNDER_INPUT", founderQuestions: needsFounder.map((f) => f.question!), findings };
-  if (args.agentOutcome === "NEEDS_FOUNDER_INPUT") return { outcome: "NEEDS_FOUNDER_INPUT", founderQuestions: [], findings };
-  if (blocking.length || args.agentOutcome === "NEEDS_REVISION") {
-    return args.revisionCycles >= args.maxRevisionCycles
-      ? { outcome: "UNABLE_TO_COMPLETE", founderQuestions: [], findings }
-      : { outcome: "NEEDS_REVISION", founderQuestions: [], findings };
+  if (needsFounder.length) return { outcome: "NEEDS_FOUNDER_INPUT", founderQuestions: needsFounder.slice(0, 1).map((f) => f.question!), findings };
+  const guardrailBlocking = blocking.filter((f) => !f.id.startsWith("agent-"));
+  const wantsRevision = blocking.length > 0 || args.agentOutcome === "NEEDS_REVISION" || args.agentOutcome === "NEEDS_FOUNDER_INPUT";
+  if (wantsRevision) {
+    if (args.revisionCycles < args.maxRevisionCycles) return { outcome: "NEEDS_REVISION", founderQuestions: [], findings };
+    // Out of automatic rounds: hard rule breaks stop the order; the agent's
+    // softer concerns go to the founder's review page instead of blocking it.
+    if (guardrailBlocking.length) return { outcome: "UNABLE_TO_COMPLETE", founderQuestions: [], findings };
   }
   return { outcome: "READY_FOR_APPROVAL", founderQuestions: [], findings };
 }

@@ -4,7 +4,6 @@ import { jobs, type Job } from "@/lib/db/schema";
 import { isLive } from "@/lib/env";
 import { createCheckoutSession, stripe } from "@/lib/integrations/stripe";
 import { links } from "@/lib/links";
-import { queueMessage, templates } from "./outbound";
 import { enqueue, getJob } from "./store";
 
 /**
@@ -64,7 +63,6 @@ export async function fulfillPayment(args: { jobId: string; checkoutSessionId: s
     .where(and(eq(jobs.id, job.id), eq(jobs.paymentStatus, "unpaid")))
     .returning();
   if (!paid) return { fulfilled: false, job };
-  await queueMessage(paid, "payment_received", `${paid.id}:payment_received`, templates.payment_received(paid));
   await enqueue(paid.id, "research_plan", `${paid.id}:research_plan`);
   return { fulfilled: true, job: paid };
 }

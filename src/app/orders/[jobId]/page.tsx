@@ -13,6 +13,7 @@ import { stripe } from "@/lib/integrations/stripe";
 import { links } from "@/lib/links";
 import { verifyLink } from "@/lib/security";
 import { orderView, type OrderView } from "@/lib/views";
+import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
 import { kick } from "@/lib/workflow/run";
 
@@ -101,7 +102,7 @@ function Headline({ view, payUrl }: { view: OrderView; payUrl: string | null }) 
     case "AWAITING_PAYMENT":
       return block(
         "Your brief is in",
-        <>We&apos;ll argue: <span className="text-fg-2">{job.thesis ?? job.topic}</span>{job.audience ? <> — for {job.audience}</> : null}. Pay to start research.</>,
+        <>{usableThesis(job) ? <>We&apos;ll argue: <span className="text-fg-2">{usableThesis(job)}</span></> : <>Topic: <span className="text-fg-2">{job.topic}</span></>}{job.audience ? <> — for {job.audience}</> : null}. Pay to start research.</>,
         payUrl ? (
           <ButtonLink href={payUrl} prefetch={false}>
             Pay ${(job.amountCents / 100).toFixed(0)} and start research
@@ -130,6 +131,11 @@ function Headline({ view, payUrl }: { view: OrderView; payUrl: string | null }) 
             <Mail className="size-4" aria-hidden /> Reply to our email — your answer resumes the work automatically.
           </p>
         </>,
+        view.draft ? (
+          <ButtonLink href={links.reviewPath(job.id)} variant="secondary">
+            Read the current draft
+          </ButtonLink>
+        ) : null,
       );
     case "READY_FOR_APPROVAL":
       return block("Your article is ready for review", "Read the exact text, see the sources beside each claim, then approve or edit.", <ButtonLink href={links.reviewPath(job.id)}>Review and approve</ButtonLink>);

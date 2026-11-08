@@ -160,3 +160,22 @@ describe("reviewer questions", () => {
     expect(metricClause("Response time improved by 80%.", "80%")).toBe("Response time improved by 80%");
   });
 });
+
+describe("reviewer does not stall on minor questions", () => {
+  it("turns the agent's founder questions into revisions, and never blocks on them at the cycle cap", async () => {
+    const { decideOutcome } = await import("@/lib/workflow/editorial");
+    const job = { founderReplies: [], openQuestions: [] } as never;
+    const soft = [{ id: "agent-1-0", severity: "blocking" as const, kind: "unsupported_claim", claim: "x", question: "Which study?" }];
+    expect(decideOutcome({ agentOutcome: "NEEDS_FOUNDER_INPUT", findings: soft, job, revisionCycles: 0, maxRevisionCycles: 2 }).outcome).toBe("NEEDS_REVISION");
+    expect(decideOutcome({ agentOutcome: "NEEDS_FOUNDER_INPUT", findings: soft, job, revisionCycles: 2, maxRevisionCycles: 2 }).outcome).toBe("READY_FOR_APPROVAL");
+  });
+
+  it("asks only about a concrete figure conflict, and opens no new question after a reply", async () => {
+    const { decideOutcome } = await import("@/lib/workflow/editorial");
+    const fig = { id: "figure-1", severity: "blocking" as const, kind: "figure_mismatch", claim: "up 80%", passage: "up 60%", question: "Q1?" };
+    const fresh = { founderReplies: [], openQuestions: [] } as never;
+    expect(decideOutcome({ agentOutcome: null, findings: [fig], job: fresh, revisionCycles: 0, maxRevisionCycles: 2 }).outcome).toBe("NEEDS_FOUNDER_INPUT");
+    const repliedOther = { founderReplies: [{ text: "thanks", messageId: null, receivedAt: "", attachmentSourceIds: [] }], openQuestions: ["Different?"] } as never;
+    expect(decideOutcome({ agentOutcome: null, findings: [fig], job: repliedOther, revisionCycles: 0, maxRevisionCycles: 2 }).outcome).toBe("NEEDS_REVISION");
+  });
+});

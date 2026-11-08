@@ -328,7 +328,7 @@ async function cumulativeFindings(jobId: string): Promise<Finding[]> {
   const db = await getDb();
   const all = await db.select().from(reviews).where(eq(reviews.jobId, jobId)).orderBy(asc(reviews.createdAt));
   const out = new Map<string, Finding>();
-  for (const r of all) for (const f of r.findings) if (f.proposedFix || f.kind === "figure_mismatch") out.set(`${f.kind}|${f.claim}`, f);
+  for (const r of all) for (const f of r.findings) if (f.proposedFix || f.kind === "figure_mismatch" || f.severity === "blocking") out.set(`${f.kind}|${f.claim}`, f);
   return [...out.values()];
 }
 
@@ -412,8 +412,6 @@ registerHandler("review", {
     const maxCycles = env().MAX_REVISION_CYCLES;
     const guard = runGuardrails({ job, draft, sources: srcs, revisionCycles: job.revisionCycles, maxRevisionCycles: maxCycles });
     let decision = decideOutcome({ agentOutcome: agent.outcome ?? null, findings: [...guard, ...agentFindings], job, revisionCycles: job.revisionCycles, maxRevisionCycles: maxCycles });
-    const agentQuestions = (agent.founderQuestions ?? []).filter(Boolean);
-    if (decision.outcome === "NEEDS_FOUNDER_INPUT" && !decision.founderQuestions.length) decision = { ...decision, founderQuestions: agentQuestions };
 
     // Was this draft waiting on the founder? Then an answer must be written in
     // before approval, whatever the checks say — and that pass is free.
