@@ -1,3 +1,4 @@
+import { isSoftFinding } from "./humanize";
 import { createHash } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -105,7 +106,7 @@ async function gate(job: Job, draftId: string, destination: string) {
   if (review?.outcome !== "READY_FOR_APPROVAL") throw new PermanentError("Gate: the current draft has not passed review.");
   // Only the app's deterministic checks block publication. The reviewer
   // agent's remaining notes were shown to the founder, who approved anyway.
-  if (review.findings.some((f) => f.severity === "blocking" && !f.resolved && !f.id.startsWith("agent-"))) {
+  if (review.findings.some((f) => f.severity === "blocking" && !f.resolved && !isSoftFinding(f))) {
     throw new PermanentError("Gate: blocking findings are unresolved.");
   }
   const db = await getDb();

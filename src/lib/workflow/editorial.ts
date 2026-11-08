@@ -1,3 +1,4 @@
+import { isSoftFinding, STYLE_RULES, styleFindings } from "./humanize";
 import { z } from "zod";
 import { sentences } from "@/lib/extract";
 import type { Claim, Finding, FounderReply, Job, ReviewOutcome, Source } from "@/lib/db/schema";
@@ -143,6 +144,7 @@ export function writePrompt(args: {
     `Evidence:\n${args.evidence.map((e) => `- [${e.sourceRef}] (${e.kind}) "${e.passage}" — ${e.supports}`).join("\n") || "none"}`,
     args.findings.length ? `Open findings to resolve:\n${args.findings.map((f) => `- ${f.kind}: ${f.claim}${f.proposedFix ? ` → ${f.proposedFix}` : ""}`).join("\n")}` : "",
     args.previousBody ? `Previous draft:\n${args.previousBody}` : "",
+    `Style (write like a person, not a model):\n${STYLE_RULES.map((r) => `- ${r}`).join("\n")}`,
     `Available source references: ${args.sources.filter((s) => s.status === "fetched").map((s) => s.ref).join(", ")}`,
     "Also write a short announcement (under 260 characters, ending with {{url}}) and list every factual claim with its source references. List significant corrections you made relative to the founder's notes.",
     "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `xSingle` is one standalone post of at most 280 characters including {{url}} (count the link as 23 characters). `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}, then a final line of 3–5 specific, relevant hashtags (e.g. #SaaS #CustomerSupport), never generic ones like #success or #motivation. `newsletter` is { subject (under 60 characters, specific), preview (one line), body (a short issue in the founder's voice ending with {{url}}) }. `instagram` is { slides: 5–8 slides of at most 20 words each, one idea per slide, first slide a hook, last slide 'Full article: link in bio'; caption: 2–4 short lines plus 3–5 specific hashtags }.",
@@ -375,6 +377,9 @@ export function runGuardrails(ctx: GuardrailContext): Finding[] {
   if (!/^##\s+Sources/m.test(draft.bodyMarkdown)) {
     findings.push({ id: fid("sources"), severity: "blocking", kind: "missing_sources", claim: "The draft has no Sources section.", proposedFix: "Add a ## Sources section listing each cited reference." });
   }
+  // 5. Humanizer: machine-sounding prose goes back for revision (never blocks).
+  findings.push(...styleFindings(draft.bodyMarkdown, fid));
+
   const words = draft.bodyMarkdown.split(/\s+/).length;
   if (words < 180) {
     findings.push({ id: fid("length"), severity: "minor", kind: "too_short", claim: `The draft is ${words} words.` });
@@ -408,7 +413,7 @@ export function decideOutcome(args: {
   );
   if (args.agentOutcome === "UNABLE_TO_COMPLETE") return { outcome: "UNABLE_TO_COMPLETE", founderQuestions: [], findings };
   if (needsFounder.length) return { outcome: "NEEDS_FOUNDER_INPUT", founderQuestions: needsFounder.slice(0, 1).map((f) => f.question!), findings };
-  const guardrailBlocking = blocking.filter((f) => !f.id.startsWith("agent-"));
+  const guardrailBlocking = blocking.filter((f) => !isSoftFinding(f));
   const wantsRevision = blocking.length > 0 || args.agentOutcome === "NEEDS_REVISION" || args.agentOutcome === "NEEDS_FOUNDER_INPUT";
   if (wantsRevision) {
     if (args.revisionCycles < args.maxRevisionCycles) return { outcome: "NEEDS_REVISION", founderQuestions: [], findings };

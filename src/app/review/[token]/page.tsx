@@ -1,3 +1,4 @@
+import { isSoftFinding } from "@/lib/workflow/humanize";
 import { connection } from "next/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -202,12 +203,12 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
           </section>
         ) : null}
 
-        {ready && review?.findings.some((f) => f.id.startsWith("agent-") && !f.resolved) ? (
+        {ready && review?.findings.some((f) => isSoftFinding(f) && !f.resolved) ? (
           <section>
             <MonoLabel className="mb-3">Reviewer notes for you</MonoLabel>
             <ul className="space-y-2.5">
               {review.findings
-                .filter((f) => f.id.startsWith("agent-") && !f.resolved)
+                .filter((f) => isSoftFinding(f) && !f.resolved)
                 .slice(0, 5)
                 .map((f) => (
                   <li key={f.id + f.claim.slice(0, 20)} className="rounded-lg border border-line bg-panel p-3 text-sm text-fg-2">
