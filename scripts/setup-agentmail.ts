@@ -10,6 +10,7 @@ import { createInbox, createWebhook } from "../src/lib/integrations/agentmail";
 import { env } from "../src/lib/env";
 
 const { values } = parseArgs({
+  allowPositionals: true,
   options: { username: { type: "string" }, display: { type: "string", default: "FounderDesk" } },
 });
 

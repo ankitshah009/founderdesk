@@ -12,6 +12,7 @@ import { env } from "../src/lib/env";
 import { discover, fillTemplate, getRun, inspect, normalizeDocs, extractText, run, TERMINAL } from "../src/lib/integrations/monid";
 
 const { values } = parseArgs({
+  allowPositionals: true,
   options: {
     try: { type: "string" },
     provider: { type: "string" },
