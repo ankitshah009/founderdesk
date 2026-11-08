@@ -252,3 +252,15 @@ export async function isFreeEligible(email: string): Promise<boolean> {
     .limit(1);
   return !prior;
 }
+
+/** The earlier order that used this account's free article (or its first paid one), to explain the price. */
+export async function priorOrderFor(email: string, exceptJobId: string): Promise<{ id: string; createdAt: Date; free: boolean } | null> {
+  const db = await getDb();
+  const [prior] = await db
+    .select({ id: jobs.id, createdAt: jobs.createdAt, amountCents: jobs.amountCents })
+    .from(jobs)
+    .where(and(eq(jobs.founderEmail, email.toLowerCase()), eq(jobs.paymentStatus, "paid"), sql`${jobs.id} <> ${exceptJobId}`))
+    .orderBy(jobs.createdAt)
+    .limit(1);
+  return prior ? { id: prior.id, createdAt: prior.createdAt, free: prior.amountCents === 0 } : null;
+}

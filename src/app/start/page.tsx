@@ -1,7 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { connection } from "next/server";
-import { Suspense } from "react";
 import { Mail } from "lucide-react";
 import { Footer, Nav } from "@/components/chrome";
 import { MonoLabel } from "@/components/ui";
@@ -10,24 +7,10 @@ import { StartForm } from "./start-form";
 
 export const metadata: Metadata = { title: "Start an article" };
 
-/** Signed-in founders who haven't finished onboarding go there first (and come straight back). */
-async function OnboardingGate() {
-  await connection();
-  const { currentSession } = await import("@/lib/auth");
-  const session = await currentSession();
-  if (!session) return null;
-  const { needsOnboarding, onboardingPath } = await import("@/lib/studio/gate");
-  if (await needsOnboarding(session.email)) redirect(onboardingPath("/start"));
-  return null;
-}
-
 export default function StartPage() {
   const inbox = env().AGENTMAIL_INBOX_ID;
   return (
     <>
-      <Suspense fallback={null}>
-        <OnboardingGate />
-      </Suspense>
       <Nav />
       <main className="flex-1">
         <div className="frame grid gap-12 px-4 py-16 md:grid-cols-[1fr_320px] md:px-12 md:py-20">

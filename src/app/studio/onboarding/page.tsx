@@ -60,7 +60,7 @@ async function Onboarding({ searchParams }: { searchParams: PageProps<"/studio/o
 
       {toArticle && !profile.onboardedAt ? (
         <p role="status" className="mb-6 rounded-xl border border-accent/40 bg-accent-tint px-4 py-3 text-sm text-fg">
-          One quick step before your article: tell the desk about your company so it writes in your brand and voice. About two minutes, then we take you straight back.
+          Optional, about two minutes: tell the desk about your company so your article sounds like you. Share as much as you like, or skip straight to your article.
         </p>
       ) : null}
       {missingBrand ? (
@@ -127,11 +127,11 @@ async function Onboarding({ searchParams }: { searchParams: PageProps<"/studio/o
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
         <form action={finishOnboarding}>
           <input type="hidden" name="next" value={next} />
-          <Button type="submit" disabled={!brand}>
-            {profile.onboardedAt ? (toArticle ? "Continue to your article" : "Back to overview") : toArticle ? "Finish setup and start my article" : "Finish setup"}
+          <Button type="submit">
+            {profile.onboardedAt ? (toArticle ? "Continue to your article" : "Back to overview") : brand ? (toArticle ? "Finish and start my article" : "Finish setup") : toArticle ? "Skip to my article" : "Skip for now"}
           </Button>
         </form>
-        {!brand ? <span className="text-sm text-muted">Capture your company in step 1 to finish. A writing sample is optional but makes drafts sound like you.</span> : null}
+        {!brand ? <span className="text-sm text-muted">Everything here is optional. You can add it any time from the Studio.</span> : null}
       </div>
     </>
   );

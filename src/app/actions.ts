@@ -71,16 +71,27 @@ export async function readMaterialAction(prev: IdeasState, form: FormData): Prom
   }
 }
 
-/**
- * Signed-out visitors may start an article as a free hook. Signed-in founders
- * finish onboarding first, so the desk writes from their brand and voice.
- */
-async function onboardingGate(): Promise<void> {
+/** The signed-in founder's account email, if any. Onboarding is optional, so nothing is gated on it. */
+async function signedInAccount(): Promise<string | null> {
   const { currentSession } = await import("@/lib/auth");
-  const session = await currentSession();
-  if (!session) return;
-  const { needsOnboarding, onboardingPath } = await import("@/lib/studio/gate");
-  if (await needsOnboarding(session.email)) redirect(onboardingPath("/start"));
+  return (await currentSession())?.email ?? null;
+}
+
+/**
+ * Create the order for whoever is asking. A signed-in founder's order always
+ * belongs to their account (a typed email can't redirect it), and their first
+ * article starts free right away: the account is already a verified email, so
+ * there is nothing to confirm. One free article per account; the database's
+ * unique index enforces it. Signed-out visitors confirm their email first.
+ */
+async function createOrder(account: string | null, args: { email: string; name: string | null; subject: string | null; body: string }) {
+  const job = await createJob({ channel: "web", founderEmail: account ?? args.email, founderName: args.name, subject: args.subject, body: args.body });
+  if (account) {
+    const { claimFree } = await import("@/lib/workflow/intake");
+    await claimFree(job.id);
+  }
+  kick();
+  return job;
 }
 
 const ideaStartSchema = z.object({
@@ -94,8 +105,8 @@ const ideaStartSchema = z.object({
 
 /** Step 2: start the order from a picked idea, or from the founder's own argument. */
 export async function startFromIdea(_: ActionState, form: FormData): Promise<ActionState> {
-  await onboardingGate();
-  const parsed = ideaStartSchema.safeParse(Object.fromEntries(form));
+  const account = await signedInAccount();
+  const parsed = ideaStartSchema.safeParse({ ...Object.fromEntries(form), ...(account ? { email: account } : {}) });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
   const v = parsed.data;
   const { briefFromIdea, ideasSchema } = await import("@/lib/ideas");
@@ -115,8 +126,7 @@ export async function startFromIdea(_: ActionState, form: FormData): Promise<Act
     body = [v.material, v.angle ? `\nMore from me: ${v.angle}` : ""].join("");
   }
   if (v.boundaries) body += `\n\n${v.boundaries}`;
-  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject, body });
-  kick();
+  const job = await createOrder(account, { email: v.email, name: v.name || null, subject, body });
   redirect(links.orderPath(job.id));
 }
 
@@ -141,13 +151,12 @@ export async function materialFromFile(form: FormData): Promise<{ text?: string;
 }
 
 export async function startArticle(_: ActionState, form: FormData): Promise<ActionState> {
-  await onboardingGate();
-  const parsed = startSchema.safeParse(Object.fromEntries(form));
+  const account = await signedInAccount();
+  const parsed = startSchema.safeParse({ ...Object.fromEntries(form), ...(account ? { email: account } : {}) });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
   const v = parsed.data;
   const body = [v.notes, v.links ? `\nLinks:\n${v.links}` : "", v.boundaries ? `\n${v.boundaries}` : ""].join("\n");
-  const job = await createJob({ channel: "web", founderEmail: v.email, founderName: v.name || null, subject: v.subject || null, body });
-  kick();
+  const job = await createOrder(account, { email: v.email, name: v.name || null, subject: v.subject || null, body });
   redirect(links.orderPath(job.id));
 }
 

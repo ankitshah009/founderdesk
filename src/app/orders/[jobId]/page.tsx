@@ -16,7 +16,7 @@ import { stripe } from "@/lib/integrations/stripe";
 import { links } from "@/lib/links";
 import { verifyLink } from "@/lib/security";
 import { orderView, type OrderView } from "@/lib/views";
-import { isFreeEligible } from "@/lib/workflow/intake";
+import { isFreeEligible, priorOrderFor } from "@/lib/workflow/intake";
 import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
 import { StartFreeCard } from "./start-card";
@@ -74,6 +74,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   const tickUrl = `/api/orders/${jobId}/tick?t=${encodeURIComponent(token)}`;
   const payUrl = job.paymentStatus === "unpaid" ? links.checkoutPath(job.id) : null;
   const freeEligible = job.paymentStatus === "unpaid" && (await isFreeEligible(job.founderEmail));
+  const prior = job.paymentStatus === "unpaid" && !freeEligible ? await priorOrderFor(job.founderEmail, job.id) : null;
   const queued = ["PUBLISHING", "PUBLISHED", "COMPLETE"].includes(job.stage) ? await upcoming(job.id) : [];
 
   return (
@@ -95,7 +96,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
               running={view.dispatches.find((d) => d.status === "started" || (d.status === "pending" && d.startedAt)) ?? null}
             />
           ) : (
-            <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} />
+            <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} prior={prior} />
           )}
           {!isScheduled(job) && queued.length ? (
             <div className="mt-8">
@@ -127,7 +128,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   );
 }
 
-function Headline({ view, payUrl, freeEligible }: { view: OrderView; payUrl: string | null; freeEligible: boolean }) {
+function Headline({ view, payUrl, freeEligible, prior }: { view: OrderView; payUrl: string | null; freeEligible: boolean; prior?: { id: string; createdAt: Date; free: boolean } | null }) {
   const { job, web } = view;
   const block = (title: string, body: React.ReactNode, action?: React.ReactNode) => (
     <div>
@@ -142,9 +143,18 @@ function Headline({ view, payUrl, freeEligible }: { view: OrderView; payUrl: str
         "Your brief is in",
         <>{usableThesis(job) ? <>We&apos;ll argue: <span className="text-fg-2">{usableThesis(job)}</span></> : <>Topic: <span className="text-fg-2">{job.topic}</span></>}{job.audience ? <> — for {job.audience}</> : null}.{freeEligible ? null : " Pay to start research."}</>,
         freeEligible ? null : payUrl ? (
-          <ButtonLink href={payUrl} prefetch={false}>
-            Pay ${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)} and start research
-          </ButtonLink>
+          <div className="space-y-3">
+            {prior ? (
+              <p className="max-w-xl rounded-xl border border-line bg-white/[0.03] px-4 py-3 text-sm text-fg-2">
+                {prior.free ? "Your free article was used" : "This account already has an article"} on order{" "}
+                <span className="font-mono text-fg">{prior.id.slice(0, 8).toUpperCase()}</span> ({prior.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}). One free article per account; each one after that is $
+                {(env().OFFER_AMOUNT_CENTS / 100).toFixed(0)}.
+              </p>
+            ) : null}
+            <ButtonLink href={payUrl} prefetch={false}>
+              Pay ${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)} and start research
+            </ButtonLink>
+          </div>
         ) : null,
       );
     case "PAID":

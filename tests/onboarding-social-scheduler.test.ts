@@ -36,9 +36,10 @@ describe("sign-in landing and onboarding gate", () => {
     expect(await landingAfterSignIn(email, "//evil.test/studio")).toBe("/studio/onboarding?next=%2Fstudio");
   });
 
-  it("counts onboarding as done only when the brand is captured, not by skipping", async () => {
-    expect(onboardingDone({ onboardedAt: new Date(), brand: null })).toBe(false);
-    expect(onboardingDone({ onboardedAt: null, brand: brand as never })).toBe(false);
+  it("treats onboarding as optional: finishing, skipping or sharing a brand all count", async () => {
+    expect(onboardingDone({ onboardedAt: null, brand: null })).toBe(false);
+    expect(onboardingDone({ onboardedAt: new Date(), brand: null })).toBe(true);
+    expect(onboardingDone({ onboardedAt: null, brand: brand as never })).toBe(true);
     const email = "done@gate.test";
     await updateProfile(email, { brand: brand as never, onboardedAt: new Date() });
     expect(await landingAfterSignIn(email, "/start")).toBe("/start");

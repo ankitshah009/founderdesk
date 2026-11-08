@@ -101,3 +101,29 @@ function fd(o: Record<string, string>): FormData {
   for (const [k, v] of Object.entries(o)) f.set(k, v);
   return f;
 }
+
+describe("first article free per account", () => {
+  it("a signed-in founder's order belongs to their account and starts free at once; the second one is paid", async () => {
+    const { createSession } = await import("@/lib/auth");
+    const { startArticle } = await import("@/app/actions");
+    const { getDb } = await import("@/lib/db/client");
+    const { jobs } = await import("@/lib/db/schema");
+    const { eq } = await import("drizzle-orm");
+    jar.clear();
+    await createSession("acct@free.test");
+    const notes = "I want to write about why one free article per account is fair. My audience is founders.";
+    // A different email typed into the form is ignored for signed-in founders.
+    const first = await redirectedTo(startArticle(null, fd({ email: "someone-else@free.test", notes })));
+    expect(first).toMatch(/^\/orders\//);
+    const db = await getDb();
+    const mine = await db.select().from(jobs).where(eq(jobs.founderEmail, "acct@free.test"));
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.paymentStatus).toBe("paid");
+    expect(mine[0]!.amountCents).toBe(0);
+    expect(await db.select().from(jobs).where(eq(jobs.founderEmail, "someone-else@free.test"))).toHaveLength(0);
+
+    await redirectedTo(startArticle(null, fd({ email: "acct@free.test", notes: `${notes} Again.` })));
+    const after = await db.select().from(jobs).where(eq(jobs.founderEmail, "acct@free.test"));
+    expect(after.filter((j) => j.paymentStatus === "unpaid")).toHaveLength(1);
+  });
+});
