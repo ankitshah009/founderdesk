@@ -59,7 +59,14 @@ export async function approveArticle(_: ActionState, form: FormData): Promise<Ac
       destinations: form.getAll("destinations").map(String),
       xFormat: form.get("xFormat") === "single" ? "single" : "thread",
       imageIds: form.getAll("imageIds").map(String),
-      publishAt: form.get("when") === "later" && form.get("publishAt") ? new Date(String(form.get("publishAt"))) : null,
+      schedule:
+        form.get("when") === "later"
+          ? Object.fromEntries(
+              [...form.entries()]
+                .filter(([k, v]) => k.startsWith("at_") && String(v))
+                .map(([k, v]) => [k.slice(3), new Date(String(v))]),
+            )
+          : undefined,
     });
   } catch (err) {
     if (err instanceof GateError) return { error: err.message };

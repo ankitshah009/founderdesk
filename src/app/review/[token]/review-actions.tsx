@@ -3,6 +3,9 @@
 import { useActionState, useState } from "react";
 import { approveArticle, editArticle, type ActionState } from "@/app/actions";
 import { Button, Field, inputClass } from "@/components/ui";
+import { BEST_TIMES, nextBestTime, suggestPlan, type Channel } from "@/lib/schedule";
+
+const CHANNEL_LABEL: Record<string, string> = { web: "Web article", x: "X", linkedin: "LinkedIn", instagram: "Instagram" };
 
 type Props = {
   token: string;
@@ -19,24 +22,36 @@ function localInputValue(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** Tomorrow 9:00 in the founder's own timezone — the default slot. */
-function defaultSlot(): Date {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(9, 0, 0, 0);
-  return d;
-}
-
 export function ApprovePanel({ token, draftId, contentHash, destination, social, readyImages = [] }: Omit<Props, "draft">) {
   const [state, action, pending] = useActionState<ActionState, FormData>(approveArticle, null);
   const [when, setWhen] = useState<"now" | "later">("now");
-  const [local, setLocal] = useState<string>("");
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [times, setTimes] = useState<Record<string, string>>({});
   const [bounds] = useState(() => {
     const now = new Date();
     return { min: localInputValue(now), max: localInputValue(new Date(now.getTime() + 60 * 86_400_000)) };
   });
-  const at = local ? new Date(local) : null;
-  const label = at && !Number.isNaN(at.getTime()) ? at.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  const channels = ["web", ...ticked];
+  const parsed = (c: string) => {
+    const v = times[c];
+    const d = v ? new Date(v) : null;
+    return d && !Number.isNaN(d.getTime()) ? d : null;
+  };
+  const fmt = (d: Date) => d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const suggest = (cs: string[]) => {
+    const plan = suggestPlan(cs as Channel[], new Date());
+    setTimes(Object.fromEntries(Object.entries(plan).map(([k, d]) => [k, localInputValue(d)])));
+  };
+  const toggle = (id: string, on: boolean) => {
+    const next = on ? [...ticked, id] : ticked.filter((t) => t !== id);
+    setTicked(next);
+    if (when === "later" && on && !times[id]) {
+      const web = parsed("web") ?? new Date();
+      setTimes({ ...times, [id]: localInputValue(nextBestTime(id as Channel, new Date(web.getTime() + 30 * 60_000 - 1))) });
+    }
+  };
+  const ready = when === "now" || channels.every((c) => parsed(c));
+  const label = when === "later" && parsed("web") ? fmt(parsed("web")!) : null;
   const zone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
   if (state?.ok) {
     return (
@@ -62,7 +77,7 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
         {social.map((s) => (
           <div key={s.id}>
             <label className="flex items-center gap-2.5 text-fg-2">
-              <input type="checkbox" name="destinations" value={s.id} className="accent-white" />
+              <input type="checkbox" name="destinations" value={s.id} checked={ticked.includes(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} className="accent-white" />
               Announce on {s.label}
             </label>
             {s.id === "x" ? (
@@ -107,7 +122,7 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
                 checked={when === w}
                 onChange={() => {
                   setWhen(w);
-                  if (w === "later" && !local) setLocal(localInputValue(defaultSlot()));
+                  if (w === "later" && !Object.keys(times).length) suggest(channels);
                 }}
                 className="sr-only"
               />
@@ -116,18 +131,36 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
           ))}
         </div>
         {when === "later" ? (
-          <div className="space-y-1.5 pt-1">
-            <input
-              type="datetime-local"
-              aria-label="Publish at"
-              value={local}
-              min={bounds.min}
-              max={bounds.max}
-              onChange={(e) => setLocal(e.target.value)}
-              className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-fg"
-            />
-            <p className="text-xs text-subtle">Your time ({zone}). The article and every post you ticked go out together. You can publish early or cancel until then.</p>
-            <input type="hidden" name="publishAt" value={at && !Number.isNaN(at.getTime()) ? at.toISOString() : ""} />
+          <div className="space-y-3 pt-1">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-subtle">Your time ({zone}). Suggested from typical engagement for each platform.</p>
+              <button type="button" onClick={() => suggest(channels)} className="shrink-0 text-xs font-semibold text-fg underline underline-offset-4">
+                Use suggested times
+              </button>
+            </div>
+            <ul className="space-y-2.5">
+              {channels.map((c) => (
+                <li key={c} className="rounded-lg border border-line p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-fg">{CHANNEL_LABEL[c] ?? c}</span>
+                    <input
+                      type="datetime-local"
+                      aria-label={`${CHANNEL_LABEL[c] ?? c} time`}
+                      value={times[c] ?? ""}
+                      min={bounds.min}
+                      max={bounds.max}
+                      onChange={(e) => setTimes({ ...times, [c]: e.target.value })}
+                      className="rounded-md border border-line bg-panel px-2 py-1 text-xs text-fg"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-subtle">{BEST_TIMES[c as Channel]?.why}</p>
+                  {c !== "web" && parsed(c) && parsed("web") && parsed(c)! < parsed("web")! ? (
+                    <p className="mt-1 text-[11px] text-amber">Before the article goes live, so it will post when the article is up.</p>
+                  ) : null}
+                  <input type="hidden" name={`at_${c}`} value={parsed(c)?.toISOString() ?? ""} />
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
       </fieldset>
@@ -136,8 +169,8 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
           {state.error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending || (when === "later" && !label)} className="w-full py-2">
-        {pending ? "Approving…" : when === "later" && label ? `Approve and schedule for ${label}` : "Approve and publish this version"}
+      <Button type="submit" disabled={pending || !ready} className="w-full py-2">
+        {pending ? "Approving…" : when === "later" && label ? (ticked.length ? `Approve and schedule ${channels.length} channels` : `Approve and schedule for ${label}`) : "Approve and publish this version"}
       </Button>
       <p className="text-xs leading-relaxed text-subtle">Your approval is recorded against this exact version (sha256 {contentHash.slice(0, 10)}…) and these destinations, plus the images you ticked.</p>
     </form>

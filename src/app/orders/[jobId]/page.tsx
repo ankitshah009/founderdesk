@@ -20,7 +20,7 @@ import { isFreeEligible } from "@/lib/workflow/intake";
 import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
 import { StartFreeCard } from "./start-card";
-import { isScheduled } from "@/lib/workflow/publish";
+import { isScheduled, upcoming } from "@/lib/workflow/publish";
 import { scheduleAction } from "@/app/actions";
 import { LocalTime } from "@/components/local-time";
 import { kick } from "@/lib/workflow/run";
@@ -74,6 +74,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   const tickUrl = `/api/orders/${jobId}/tick?t=${encodeURIComponent(token)}`;
   const payUrl = job.paymentStatus === "unpaid" ? links.checkoutPath(job.id) : null;
   const freeEligible = job.paymentStatus === "unpaid" && (await isFreeEligible(job.founderEmail));
+  const queued = ["PUBLISHING", "PUBLISHED", "COMPLETE"].includes(job.stage) ? await upcoming(job.id) : [];
 
   return (
     <div className="frame px-4 py-14 md:px-12 md:py-16">
@@ -85,7 +86,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
       <div className="mt-8 grid gap-10 md:grid-cols-[1fr_320px]">
         <div className="min-w-0">
           {isScheduled(job) ? (
-            <ScheduledPanel token={token} at={job.publishAt!} destinations={job.destinations} />
+            <ScheduledPanel token={token} items={queued} cancellable />
           ) : ["PAID", "RESEARCHING", "WRITING", "REVIEWING", "PUBLISHING", "PUBLISHED"].includes(job.stage) ? (
             <GeneratingPanel
               stage={job.stage}
@@ -96,6 +97,11 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
           ) : (
             <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} />
           )}
+          {!isScheduled(job) && queued.length ? (
+            <div className="mt-8">
+              <ScheduledPanel token={token} items={queued} cancellable={false} />
+            </div>
+          ) : null}
           {job.stage === "AWAITING_PAYMENT" && freeEligible ? (
             <StartFreeCard token={token} email={job.founderEmail} inbox={env().AGENTMAIL_INBOX_ID ?? "founderdesk@agentmail.to"} payUrl={payUrl} price={`$${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)}`} />
           ) : null}
@@ -253,26 +259,35 @@ function Messages({ view }: { view: OrderView }) {
 
 const DEST_LABEL: Record<string, string> = { web: "Web article", x: "X", linkedin: "LinkedIn", instagram: "Instagram" };
 
-function ScheduledPanel({ token, at, destinations }: { token: string; at: Date; destinations: string[] }) {
+function ScheduledPanel({ token, items, cancellable }: { token: string; items: Array<{ destination: string; at: Date }>; cancellable: boolean }) {
   return (
     <section aria-labelledby="sched-h" className="max-w-xl">
       <p className="text-xs font-semibold tracking-[0.08em] text-accent uppercase">Approved · scheduled</p>
-      <h1 id="sched-h" className="h1 mt-2 text-fg">
-        Goes live <LocalTime iso={at.toISOString()} withDate />
-      </h1>
-      <p className="lede mt-4">
-        {destinations.map((d) => DEST_LABEL[d] ?? d).join(", ")}. At that time we publish, check the live page serves exactly what you approved, then post.
-      </p>
-      <form action={scheduleAction} className="mt-7 flex flex-wrap gap-2.5">
+      <h2 id="sched-h" className={cancellable ? "h1 mt-2 text-fg" : "mt-2 text-xl font-semibold text-fg"}>
+        {cancellable ? "Your article is scheduled" : "Posts still to go out"}
+      </h2>
+      <ol className="mt-5 divide-y divide-line rounded-2xl border border-line bg-panel">
+        {items.map((i) => (
+          <li key={i.destination} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+            <span className="font-medium text-fg">{DEST_LABEL[i.destination] ?? i.destination}</span>
+            <span className="text-fg-2">
+              <LocalTime iso={i.at.toISOString()} withDate />
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs text-muted">Before each one goes out we check it is exactly the version you approved; the article is verified live before any post links to it.</p>
+      <form action={scheduleAction} className="mt-6 flex flex-wrap gap-2.5">
         <input type="hidden" name="t" value={token} />
         <button name="op" value="now" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#140a05] hover:bg-[#ff6f3a]">
-          Publish now instead
+          Publish everything now
         </button>
-        <button name="op" value="cancel" className="rounded-lg border border-line px-4 py-2 text-sm text-fg-2 hover:text-fg">
-          Cancel schedule
-        </button>
+        {cancellable ? (
+          <button name="op" value="cancel" className="rounded-lg border border-line px-4 py-2 text-sm text-fg-2 hover:text-fg">
+            Cancel schedule
+          </button>
+        ) : null}
       </form>
-      <p className="mt-3 text-xs text-muted">Cancelling returns the article to review; nothing is published.</p>
     </section>
   );
 }

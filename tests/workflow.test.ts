@@ -438,3 +438,75 @@ describe("scheduled publishing", () => {
     expect(normalizePublishAt(new Date(now + 3_600_000), now)!.getTime()).toBe(now + 3_600_000);
   });
 });
+
+describe("per-channel schedule", () => {
+  it("suggests platform-specific slots: LinkedIn Tue–Thu morning, never a weekend", async () => {
+    const { nextBestTime, suggestPlan } = await import("@/lib/schedule");
+    const friday = new Date(2026, 10, 6, 15, 0); // Fri 3 PM local
+    const li = nextBestTime("linkedin", friday);
+    expect(li.getDay()).toBe(2);
+    expect([li.getHours(), li.getMinutes()]).toEqual([8, 30]);
+    const ig = nextBestTime("instagram", friday);
+    // Friday evening is not a slot; next is Monday late morning.
+    expect(ig.getDay()).toBe(1);
+    expect([ig.getHours(), ig.getMinutes()]).toEqual([11, 30]);
+    const plan = suggestPlan(["x", "linkedin"], friday);
+    expect(plan.x!.getTime()).toBeGreaterThan(plan.web!.getTime());
+    expect(plan.linkedin!.getTime()).toBeGreaterThan(plan.web!.getTime());
+    for (const d of Object.values(plan)) expect([0, 6]).not.toContain(d.getDay());
+  });
+
+  it("stores each channel's time and posts each at its own time after the article", async () => {
+    process.env.X_USER_ACCESS_TOKEN = "test-x-token";
+    const { resetEnvCache } = await import("@/lib/env");
+    resetEnvCache();
+    try {
+      stubPublicWeb();
+      const { createJob } = await import("@/lib/workflow/intake");
+      const db = await getDb();
+      const job = await createJob({ channel: "web", founderEmail: "perchan@founder.test", subject: "pc", body: "I want to write about why timing matters for posts. My audience is founders." });
+      const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: "Per channel", dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A {{url}}", contentHash: "h-pc", variants: { x: ["Post {{url}}"], xSingle: "Post {{url}}" } }).returning();
+      await db.insert(reviews).values({ jobId: job.id, draftId: d!.id, outcome: "READY_FOR_APPROVAL", summary: "ok", findings: [] });
+      await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
+      const xAt = new Date(Date.now() + 5 * 3_600_000);
+      // Web now; X five hours later.
+      await approveDraft({ jobId: job.id, draftId: d!.id, contentHash: "h-pc", destinations: ["x"], schedule: { web: null, x: xAt } });
+      const rows = await db.select().from(approvals).where(eq(approvals.jobId, job.id));
+      expect(rows.find((r) => r.destination === "web")!.scheduledAt).toBeNull();
+      expect(rows.find((r) => r.destination === "x")!.scheduledAt!.getTime()).toBe(xAt.getTime());
+      await runWork({ budgetMs: 8_000 });
+      const pubs = await db.select().from(publications).where(eq(publications.jobId, job.id));
+      expect(pubs.find((p) => p.destination === "web")?.status).toBe("published");
+      expect(pubs.find((p) => p.destination === "x")).toBeUndefined();
+      const [xd] = await db.select().from(dispatches).where(eq(dispatches.requestKey, `${job.id}:publish:x:${d!.id}`));
+      expect(xd!.status).toBe("pending");
+      expect(xd!.nextRunAt.getTime()).toBe(xAt.getTime());
+      const { upcoming } = await import("@/lib/workflow/publish");
+      expect((await upcoming(job.id)).map((u) => u.destination)).toEqual(["x"]);
+    } finally {
+      delete process.env.X_USER_ACCESS_TOKEN;
+      resetEnvCache();
+    }
+  });
+
+  it("never schedules a post before its article", async () => {
+    const { createJob } = await import("@/lib/workflow/intake");
+    const db = await getDb();
+    process.env.X_USER_ACCESS_TOKEN = "test-x-token";
+    const { resetEnvCache } = await import("@/lib/env");
+    resetEnvCache();
+    try {
+      const job = await createJob({ channel: "web", founderEmail: "clamp@founder.test", subject: "cl", body: "I want to write about why order matters for posts. My audience is founders." });
+      const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: "Clamp", dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A", contentHash: "h-cl" }).returning();
+      await db.insert(reviews).values({ jobId: job.id, draftId: d!.id, outcome: "READY_FOR_APPROVAL", summary: "ok", findings: [] });
+      await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
+      const web = new Date(Date.now() + 10 * 3_600_000);
+      await approveDraft({ jobId: job.id, draftId: d!.id, contentHash: "h-cl", destinations: ["x"], schedule: { web, x: new Date(Date.now() + 3_600_000) } });
+      const rows = await db.select().from(approvals).where(eq(approvals.jobId, job.id));
+      expect(rows.find((r) => r.destination === "x")!.scheduledAt!.getTime()).toBe(web.getTime());
+    } finally {
+      delete process.env.X_USER_ACCESS_TOKEN;
+      resetEnvCache();
+    }
+  });
+});

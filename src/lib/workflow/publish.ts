@@ -36,7 +36,7 @@ export async function hashImages(jobId: string, ids: string[]): Promise<string |
   return createHash("sha256").update(parts.join("\n")).digest("hex");
 }
 
-export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread"; imageIds?: string[]; publishAt?: Date | null }) {
+export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread"; imageIds?: string[]; publishAt?: Date | null; schedule?: Record<string, Date | null> }) {
   const job = await getJob(args.jobId);
   if (!job) throw new GateError("Order not found.");
   if (job.stage !== "READY_FOR_APPROVAL") throw new GateError("This article is not waiting for approval.");
@@ -49,7 +49,9 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
   const allowed = new Set<string>(["web", ...Object.values(SOCIAL).filter((a) => a.connected()).map((a) => a.id)]);
   if (instagramConnected()) allowed.add("instagram");
   const destinations = ["web", ...args.destinations.filter((d) => d !== "web" && allowed.has(d))];
-  const publishAt = normalizePublishAt(args.publishAt ?? null);
+  // Per-channel times: the article's time (or `publishAt`) applies to any
+  // channel without its own; a post never goes out before the article.
+  const publishAt = normalizePublishAt(args.schedule?.web ?? args.publishAt ?? null);
   const imageIds = [...new Set(args.imageIds ?? [])];
   const imagesHash = await hashImages(job.id, imageIds);
   if (destinations.includes("instagram") && !imageIds.length) throw new GateError("Choose at least one image to post to Instagram.");
@@ -57,7 +59,10 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
   await db
     .insert(approvals)
     .values(
-      destinations.map((destination) => ({
+      destinations.map((destination) => {
+        const own = destination === "web" ? publishAt : normalizePublishAt(args.schedule?.[destination] ?? null);
+        const at = own && publishAt && own < publishAt ? publishAt : (own ?? publishAt);
+        return {
         jobId: job.id,
         draftId: draft.id,
         contentHash: draft.contentHash,
@@ -66,9 +71,10 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
         option: destination === "x" ? (args.xFormat === "single" ? "single" : "thread") : null,
         imageIds,
         imagesHash,
-        scheduledAt: publishAt,
+        scheduledAt: at,
         approvedBy: job.founderEmail,
-      })),
+        };
+      }),
     )
     .onConflictDoNothing();
   const reason = publishAt ? `Scheduled for ${publishAt.toISOString()}` : null;
@@ -107,13 +113,30 @@ async function scheduledWebDispatch(jobId: string) {
 /** Founder changed their mind: publish the scheduled article right away. */
 export async function publishNow(jobId: string): Promise<boolean> {
   const job = await getJob(jobId);
-  if (!job || !isScheduled(job)) return false;
-  const d = await scheduledWebDispatch(jobId);
-  if (!d) return false;
+  if (!job || !(await upcoming(jobId)).length) return false;
   const db = await getDb();
-  await db.update(dispatches).set({ nextRunAt: new Date() }).where(and(eq(dispatches.id, d.id), eq(dispatches.status, "pending")));
+  const draftIds = (await db.select({ id: approvals.draftId }).from(approvals).where(eq(approvals.jobId, jobId))).map((r) => r.id);
+  if (draftIds.length) await db.update(approvals).set({ scheduledAt: null }).where(inArray(approvals.draftId, draftIds));
+  await db
+    .update(dispatches)
+    .set({ nextRunAt: new Date() })
+    .where(and(eq(dispatches.jobId, jobId), eq(dispatches.kind, "publish"), eq(dispatches.status, "pending")));
   await db.update(jobs).set({ publishAt: null, stageReason: null, updatedAt: new Date() }).where(eq(jobs.id, jobId));
   return true;
+}
+
+/** Channels approved for a later time that haven't gone out yet. */
+export async function upcoming(jobId: string): Promise<Array<{ destination: string; at: Date }>> {
+  const db = await getDb();
+  const [rows, pubs] = await Promise.all([
+    db.select().from(approvals).where(eq(approvals.jobId, jobId)),
+    db.select({ destination: publications.destination, status: publications.status }).from(publications).where(eq(publications.jobId, jobId)),
+  ]);
+  const now = Date.now();
+  return rows
+    .filter((a) => a.scheduledAt && a.scheduledAt.getTime() > now && !pubs.some((p) => p.destination === a.destination && p.status === "published"))
+    .map((a) => ({ destination: a.destination, at: a.scheduledAt! }))
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
 }
 
 /**
@@ -331,8 +354,10 @@ registerHandler("publish", {
     if (!job) return;
     await queueMessage(job, "published", `${job.id}:published:${out.publicationId}`, templates.published(job, out.url));
     await enqueue(job.id, "mobile_check", `${job.id}:mobile:${out.publicationId}`, { publicationId: out.publicationId });
+    const approved = await db.select().from(approvals).where(eq(approvals.draftId, String(d.input.draftId)));
     for (const dest of job.destinations.filter((x) => x !== "web")) {
-      await enqueue(job.id, "publish", `${job.id}:publish:${dest}:${d.input.draftId}`, { destination: dest, draftId: d.input.draftId });
+      const at = approved.find((a) => a.destination === dest)?.scheduledAt ?? null;
+      await enqueue(job.id, "publish", `${job.id}:publish:${dest}:${d.input.draftId}`, { destination: dest, draftId: d.input.draftId }, at && at.getTime() > Date.now() ? at : undefined);
     }
   },
   async fail(d, reason) {
