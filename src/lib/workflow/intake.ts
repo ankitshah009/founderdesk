@@ -51,7 +51,8 @@ export async function createJob(args: {
     .returning();
   await addAttachmentSources(job!.id, args.attachments ?? []);
   // Fixed-scope acknowledgement with the Checkout link — a template, no agent.
-  await queueMessage(job!, "acknowledgement", `${job!.id}:acknowledgement`, templates.acknowledgement(job!));
+  const freeEligible = await isFreeEligible(job!.founderEmail);
+  await queueMessage(job!, "acknowledgement", `${job!.id}:acknowledgement`, templates.acknowledgement({ ...job!, freeEligible }));
   return job!;
 }
 
@@ -149,6 +150,14 @@ export async function processInboundEvent(eventId: string) {
     return markEvent(event.id, "processed", "founder reply", existing.id);
   }
   if (!text) return markEvent(event.id, "ignored", "empty message");
+  // "login" / "sign in" / "orders": reply with a sign-in challenge. The reply
+  // goes to the sending mailbox, so a spoofed From cannot sign anyone in.
+  const ask = `${m.subject ?? ""} ${text}`.trim().toLowerCase();
+  if (ask.length < 40 && /^(re:\s*)?(log ?in|sign ?in|my orders|orders)\b/.test(ask)) {
+    const { startChallenge } = await import("@/lib/auth");
+    await startChallenge(from.email).catch(() => undefined);
+    return markEvent(event.id, "processed", "sign-in request");
+  }
   const job = await createJob({
     channel: "email",
     founderEmail: from.email,
@@ -187,4 +196,15 @@ export async function resumeStaleWaits(): Promise<number> {
     .returning();
   for (const job of waiting) await recordFounderReply(job, { text: AUTO_REPLY, messageId: null });
   return waiting.length;
+}
+
+/** First article free: no earlier paid (or free) order for this address. */
+export async function isFreeEligible(email: string): Promise<boolean> {
+  const db = await getDb();
+  const [prior] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.founderEmail, email.toLowerCase()), eq(jobs.paymentStatus, "paid")))
+    .limit(1);
+  return !prior;
 }

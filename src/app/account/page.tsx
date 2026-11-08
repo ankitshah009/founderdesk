@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
@@ -11,8 +11,10 @@ import { IN_PROGRESS, STAGE_LABEL, StageChip } from "@/components/stages";
 import { ButtonLink, cn } from "@/components/ui";
 import { getDb } from "@/lib/db/client";
 import { jobs, publications, type JobStage } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import { links } from "@/lib/links";
-import { verifyLink } from "@/lib/security";
+import { currentSession } from "@/lib/auth";
+import { signOutAction } from "@/app/actions";
 
 export const metadata: Metadata = { title: "Your orders", robots: { index: false } };
 
@@ -45,13 +47,13 @@ function Progress({ stage }: { stage: JobStage }) {
   );
 }
 
-export default function AccountPage(props: PageProps<"/account">) {
+export default function AccountPage() {
   return (
     <>
       <Nav />
       <main className="flex-1">
         <Suspense fallback={<div className="mx-auto mt-16 h-64 max-w-3xl rounded-3xl bg-white/[0.03]" aria-busy />}>
-          <Orders {...props} />
+          <Orders />
         </Suspense>
       </main>
       <Footer />
@@ -59,11 +61,11 @@ export default function AccountPage(props: PageProps<"/account">) {
   );
 }
 
-async function Orders({ searchParams }: PageProps<"/account">) {
+async function Orders() {
   await connection();
-  const t = (await searchParams).t;
-  const email = verifyLink(typeof t === "string" ? t : "", "account");
-  if (!email) notFound();
+  const session = await currentSession();
+  if (!session) redirect("/signin");
+  const email = session.email;
   const db = await getDb();
   const rows = await db.select().from(jobs).where(eq(jobs.founderEmail, email)).orderBy(desc(jobs.createdAt)).limit(50);
   const pubs = rows.length ? await db.select().from(publications).where(eq(publications.destination, "web")) : [];
@@ -85,7 +87,7 @@ async function Orders({ searchParams }: PageProps<"/account">) {
           const pub = pubs.find((p) => p.jobId === j.id && p.status === "published");
           const next =
             j.stage === "AWAITING_PAYMENT"
-              ? { href: links.checkoutPath(j.id), label: "Pay $" + (j.amountCents / 100).toFixed(0) }
+              ? { href: links.checkoutPath(j.id), label: "Pay $" + (Math.min(j.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0) }
               : j.stage === "READY_FOR_APPROVAL" || j.stage === "WAITING_FOR_FOUNDER"
                 ? { href: links.reviewPath(j.id), label: j.stage === "READY_FOR_APPROVAL" ? "Review & approve" : "Read the draft" }
                 : pub?.url
@@ -115,6 +117,15 @@ async function Orders({ searchParams }: PageProps<"/account">) {
         })}
         {!rows.length ? <li className="rounded-3xl border border-line p-10 text-center text-muted">No orders yet for this email.</li> : null}
       </ul>
+      <div className="mt-12 flex flex-wrap gap-3 border-t border-line pt-6 text-sm">
+        <form action={signOutAction}>
+          <button className="text-muted hover:text-fg">Sign out</button>
+        </form>
+        <form action={signOutAction}>
+          <input type="hidden" name="everywhere" value="1" />
+          <button className="text-muted hover:text-fg">Sign out on all devices</button>
+        </form>
+      </div>
     </div>
   );
 }

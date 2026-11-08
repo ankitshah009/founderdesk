@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { jobs, type Job } from "@/lib/db/schema";
-import { isLive } from "@/lib/env";
+import { env, isLive } from "@/lib/env";
 import { createCheckoutSession, stripe } from "@/lib/integrations/stripe";
 import { links } from "@/lib/links";
 import { enqueue, getJob } from "./store";
@@ -14,6 +14,13 @@ import { enqueue, getJob } from "./store";
  */
 export async function checkoutUrlFor(job: Job): Promise<string> {
   if (job.paymentStatus === "paid") return links.orderPath(job.id);
+  // Price drops apply to unpaid orders: charge the lower of quoted and current.
+  const current = env().OFFER_AMOUNT_CENTS;
+  if (job.amountCents > current) {
+    const db0 = await getDb();
+    await db0.update(jobs).set({ amountCents: current, checkoutSessionId: null, checkoutUrl: null }).where(and(eq(jobs.id, job.id), eq(jobs.paymentStatus, "unpaid")));
+    job = { ...job, amountCents: current, checkoutSessionId: null, checkoutUrl: null };
+  }
   if (!isLive("stripe")) return `/orders/${job.id}/pay?t=${new URL(links.order(job.id)).searchParams.get("t")}`;
 
   if (job.checkoutSessionId) {

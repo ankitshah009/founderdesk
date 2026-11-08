@@ -11,5 +11,6 @@ export const links = {
   review: (jobId: string) => `${base()}/review/${signLink(jobId, "review")}`,
   reviewPath: (jobId: string) => `/review/${signLink(jobId, "review")}`,
   article: (slug: string) => `${base()}/a/${slug}`,
-  account: (email: string) => `${base()}/account?t=${signLink(email.toLowerCase(), "account", 7)}`,
+  free: (jobId: string) => `${base()}/orders/${jobId}/free?t=${signLink(jobId, "free", 7)}`,
+  signin: () => `${base()}/signin`,
 };

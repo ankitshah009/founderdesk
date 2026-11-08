@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -97,6 +98,8 @@ export const jobs = pgTable(
   (t) => [
     uniqueIndex("jobs_thread_idx").on(t.threadId),
     uniqueIndex("jobs_checkout_idx").on(t.checkoutSessionId),
+    // One free first article per email address, enforced by the database.
+    uniqueIndex("jobs_free_first_idx").on(t.founderEmail).where(sql`${t.paymentStatus} = 'paid' and ${t.amountCents} = 0`),
     index("jobs_stage_idx").on(t.stage),
   ],
 );
@@ -324,3 +327,55 @@ export type Publication = typeof publications.$inferSelect;
 export type Dispatch = typeof dispatches.$inferSelect;
 export type OutboundMessage = typeof outboundMessages.$inferSelect;
 export type ProviderEvent = typeof providerEvents.$inferSelect;
+
+/* ── Authentication ─────────────────────────────────────────────────────────
+ * Server-side sessions and single-use sign-in challenges. Only hashes of
+ * secrets are stored; the raw session token lives in an HttpOnly cookie and
+ * the raw link token / code only in the email.
+ */
+
+export const authChallenges = pgTable(
+  "auth_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    linkTokenHash: text("link_token_hash").notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    ipHash: text("ip_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("auth_challenges_email_idx").on(t.email, t.createdAt), index("auth_challenges_ip_idx").on(t.ipHash, t.createdAt)],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    userAgent: text("user_agent"),
+    ipHash: text("ip_hash"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("auth_sessions_token_idx").on(t.tokenHash), index("auth_sessions_email_idx").on(t.email)],
+);
+
+export const authEvents = pgTable(
+  "auth_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: text("type").notNull(),
+    email: text("email"),
+    ipHash: text("ip_hash"),
+    userAgent: text("user_agent"),
+    detail: text("detail"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("auth_events_email_idx").on(t.email, t.createdAt)],
+);

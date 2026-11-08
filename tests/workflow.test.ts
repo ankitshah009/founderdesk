@@ -100,7 +100,8 @@ describe("FounderDesk workflow (simulated providers, real Postgres via PGlite)",
     const mail = await outbox(jobId);
     expect(mail.map((m) => m.kind)).toEqual(["acknowledgement"]);
     expect(mail[0]!.state).toBe("simulated");
-    expect(mail[0]!.text).toContain("/api/checkout/");
+    expect(mail[0]!.text).toContain("Your first article is free");
+    expect(mail[0]!.text).toContain("/free?t=");
   });
 
   it("a duplicate webhook delivery is ignored", async () => {

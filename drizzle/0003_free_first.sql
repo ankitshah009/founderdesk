@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "jobs_free_first_idx" ON "jobs" USING btree ("founder_email") WHERE "jobs"."payment_status" = 'paid' and "jobs"."amount_cents" = 0;

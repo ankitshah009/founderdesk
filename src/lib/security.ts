@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { appSecret } from "@/lib/env";
 
-export type LinkPurpose = "review" | "order" | "account";
+export type LinkPurpose = "review" | "order" | "free";
 
 type Payload = { j: string; p: LinkPurpose; e: number };
 

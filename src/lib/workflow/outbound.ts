@@ -21,7 +21,7 @@ export const usableThesis = (job: Job) => {
 };
 
 export const templates = {
-  acknowledgement(job: Job) {
+  acknowledgement(job: Job & { freeEligible?: boolean }) {
     return {
       subject: subjectFor(job),
       text: [
@@ -38,11 +38,12 @@ export const templates = {
         job.boundaries.length ? `We will respect: ${job.boundaries.join("; ")}` : null,
         job.sourceUrls.length ? `Sources you sent: ${job.sourceUrls.join(", ")}` : null,
         "",
-        `Price: ${money(job.amountCents)} for this article. Pay here to start research:`,
-        links.checkout(job.id),
+        ...(job.freeEligible
+          ? ["Your first article is free. Confirm it's you and start research here:", links.free(job.id)]
+          : [`Price: ${money(job.amountCents)} for this article. Pay here to start research:`, links.checkout(job.id)]),
         "",
         `Track your order: ${links.order(job.id)}`,
-        `All your orders: ${links.account(job.founderEmail)}`,
+        `All your orders: ${links.signin()}`,
         "",
         "Reply to this email at any time; replies are attached to this order.",
         "— FounderDesk",

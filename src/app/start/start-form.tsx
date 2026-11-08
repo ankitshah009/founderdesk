@@ -45,7 +45,7 @@ export function StartForm() {
       ) : null}
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" disabled={pending} className="px-6 py-3 text-base">
-          {pending ? "Starting…" : "Continue — $9"}
+          {pending ? "Starting…" : "Continue — first article free"}
         </Button>
         <span className="text-sm text-muted">Nothing publishes without your approval.</span>
       </div>

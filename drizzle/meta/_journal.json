@@ -15,6 +15,20 @@
       "when": 1794100928478,
       "tag": "0001_price_9",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794101458143,
+      "tag": "0002_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794101602383,
+      "tag": "0003_free_first",
+      "breakpoints": true
     }
   ]
 }

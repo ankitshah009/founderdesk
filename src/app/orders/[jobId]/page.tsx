@@ -8,11 +8,12 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { Footer, Nav } from "@/components/chrome";
 import { IN_PROGRESS, StageChip, Timeline } from "@/components/stages";
 import { ButtonLink, Chip, MonoLabel } from "@/components/ui";
-import { isLive } from "@/lib/env";
+import { env, isLive } from "@/lib/env";
 import { stripe } from "@/lib/integrations/stripe";
 import { links } from "@/lib/links";
 import { verifyLink } from "@/lib/security";
 import { orderView, type OrderView } from "@/lib/views";
+import { isFreeEligible } from "@/lib/workflow/intake";
 import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
 import { kick } from "@/lib/workflow/run";
@@ -65,6 +66,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   const { job } = view;
   const tickUrl = `/api/orders/${jobId}/tick?t=${encodeURIComponent(token)}`;
   const payUrl = job.paymentStatus === "unpaid" ? links.checkoutPath(job.id) : null;
+  const freeEligible = job.paymentStatus === "unpaid" && (await isFreeEligible(job.founderEmail));
 
   return (
     <div className="frame px-4 py-14 md:px-12 md:py-16">
@@ -75,7 +77,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
       </div>
       <div className="mt-8 grid gap-10 md:grid-cols-[1fr_320px]">
         <div className="min-w-0">
-          <Headline view={view} payUrl={payUrl} />
+          <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} />
           <div className="panel mt-10 p-6 md:p-8">
             <Timeline stage={job.stage} />
           </div>
@@ -89,7 +91,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   );
 }
 
-function Headline({ view, payUrl }: { view: OrderView; payUrl: string | null }) {
+function Headline({ view, payUrl, freeEligible }: { view: OrderView; payUrl: string | null; freeEligible: boolean }) {
   const { job, web } = view;
   const block = (title: string, body: React.ReactNode, action?: React.ReactNode) => (
     <div>
@@ -103,9 +105,13 @@ function Headline({ view, payUrl }: { view: OrderView; payUrl: string | null }) 
       return block(
         "Your brief is in",
         <>{usableThesis(job) ? <>We&apos;ll argue: <span className="text-fg-2">{usableThesis(job)}</span></> : <>Topic: <span className="text-fg-2">{job.topic}</span></>}{job.audience ? <> — for {job.audience}</> : null}. Pay to start research.</>,
-        payUrl ? (
+        freeEligible ? (
+          <p className="rounded-xl bg-accent-tint px-4 py-3 text-sm text-fg">
+            Your first article is free — open the email we sent to <span className="font-semibold">{job.founderEmail}</span> and confirm it&apos;s you to start.
+          </p>
+        ) : payUrl ? (
           <ButtonLink href={payUrl} prefetch={false}>
-            Pay ${(job.amountCents / 100).toFixed(0)} and start research
+            Pay ${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)} and start research
           </ButtonLink>
         ) : null,
       );

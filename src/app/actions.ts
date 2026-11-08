@@ -148,29 +148,73 @@ export async function deskRun(): Promise<void> {
   kick();
 }
 
-/**
- * Passwordless sign-in: email a signed 7-day link to the "your orders" page,
- * sent from the business inbox. The response never reveals whether an email
- * has orders.
- */
-export async function requestSignIn(_: ActionState, form: FormData): Promise<ActionState> {
+/* ── Customer sign-in (see src/lib/auth.ts for the security model) ────────── */
+
+export type SignInState = { error?: string; step?: "code"; email?: string } | null;
+
+export async function requestSignIn(_: SignInState, form: FormData): Promise<SignInState> {
+  const { AuthError, startChallenge } = await import("@/lib/auth");
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Enter a valid email address." };
-  const done = { ok: `If ${email} has orders with us, a sign-in link is on its way. It works for 7 days.` };
-  const { getDb } = await import("@/lib/db/client");
-  const { jobs } = await import("@/lib/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const db = await getDb();
-  const [any] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.founderEmail, email)).limit(1);
-  if (!any) return done;
-  if (!isLive("agentmail")) return { ok: `Email isn't connected on this deployment. Your link: ${links.account(email)}` };
-  const { sendMessage } = await import("@/lib/integrations/agentmail");
-  await sendMessage({
-    inboxId: env().AGENTMAIL_INBOX_ID!,
-    to: email,
-    subject: "Your FounderDesk sign-in link",
-    text: `Here's your sign-in link. It shows every order and its progress, and works for 7 days:\n\n${links.account(email)}\n\nIf you didn't ask for this, you can ignore it.\n\n— FounderDesk`,
-    labels: ["founderdesk", "signin"],
-  });
-  return done;
+  try {
+    await startChallenge(email);
+  } catch (err) {
+    if (err instanceof AuthError) return { error: err.message };
+    throw err;
+  }
+  // Same answer whether or not the address has orders.
+  return { step: "code", email };
+}
+
+export async function verifySignInCode(_: SignInState, form: FormData): Promise<SignInState> {
+  const { AuthError, consumeCode, createSession } = await import("@/lib/auth");
+  const email = String(form.get("email") ?? "");
+  try {
+    await createSession(await consumeCode(email, String(form.get("code") ?? "").replace(/\s/g, "")));
+  } catch (err) {
+    if (err instanceof AuthError) return { error: err.message, step: "code", email };
+    throw err;
+  }
+  redirect("/account");
+}
+
+export async function confirmSignInLink(form: FormData) {
+  const { AuthError, consumeLink, createSession } = await import("@/lib/auth");
+  try {
+    await createSession(await consumeLink(String(form.get("c") ?? ""), String(form.get("t") ?? "")));
+  } catch (err) {
+    if (err instanceof AuthError) redirect("/signin?expired=1");
+    throw err;
+  }
+  redirect("/account");
+}
+
+export async function signOutAction(form: FormData) {
+  const { signOut } = await import("@/lib/auth");
+  await signOut(form.get("everywhere") === "1");
+  redirect("/signin");
+}
+
+/** Claim the free first article — only reachable from the emailed link. */
+export async function claimFreeArticle(form: FormData) {
+  const jobId = verifyLink(String(form.get("t") ?? ""), "free");
+  if (!jobId) throw new Error("This link is invalid or has expired.");
+  const job = await getJob(jobId);
+  if (!job) throw new Error("Order not found");
+  const { isFreeEligible } = await import("@/lib/workflow/intake");
+  if (job.paymentStatus === "unpaid" && (await isFreeEligible(job.founderEmail))) {
+    const { getDb } = await import("@/lib/db/client");
+    const { jobs } = await import("@/lib/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    const db = await getDb();
+    try {
+      await db.update(jobs).set({ amountCents: 0 }).where(and(eq(jobs.id, jobId), eq(jobs.paymentStatus, "unpaid")));
+      await fulfillPayment({ jobId, checkoutSessionId: `free_${jobId}`, amountTotal: null });
+    } catch {
+      // The partial unique index refused a second free article for this email.
+      const { env } = await import("@/lib/env");
+      await db.update(jobs).set({ amountCents: env().OFFER_AMOUNT_CENTS }).where(and(eq(jobs.id, jobId), eq(jobs.paymentStatus, "unpaid")));
+    }
+    kick();
+  }
+  redirect(links.orderPath(jobId));
 }

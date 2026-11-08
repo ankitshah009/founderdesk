@@ -255,13 +255,102 @@ function Steps() {
   );
 }
 
-type Channel = { tag: string; title: string; body: string; status: string; tone: "live" | "connect" | "planned"; style: string; span?: string };
-const CHANNELS: Channel[] = [
-  { tag: "WEB ARTICLE", title: "A full article, with the receipts", body: "Long-form, in your voice, with a source beside every claim — published, fetched back, and checked on a phone.", status: "Live", tone: "live", style: "bg-[linear-gradient(135deg,#ff5a1f,#ff8a3c)] text-[#140a05]", span: "md:col-span-2" },
-  { tag: "X", title: "A post with a real hook", body: "One idea, a strong first line, and a link back to the article. Approved separately.", status: "Connect account", tone: "connect", style: "bg-[linear-gradient(160deg,#2a1714,#160f0d)] text-fg" },
-  { tag: "LINKEDIN", title: "Posts that sound like you", body: "The same argument for a professional feed, read back by ID before we call it published.", status: "Connect account", tone: "connect", style: "bg-[linear-gradient(135deg,#c81f30,#e0362d)] text-fg" },
-  { tag: "NEWSLETTER", title: "An issue ready to send", body: "A subject line and a tight issue pointing to the full piece.", status: "Coming soon", tone: "planned", style: "bg-panel text-fg" },
-  { tag: "INSTAGRAM", title: "Carousels and captions", body: "Slide-by-slide copy from the approved article.", status: "Coming soon", tone: "planned", style: "bg-[linear-gradient(160deg,#3a170d,#21110c)] text-fg" },
+type ChannelStatus = "live" | "connect" | "soon";
+const STATUS: Record<ChannelStatus, { label: string; dot: string }> = {
+  live: { label: "Live", dot: "bg-green" },
+  connect: { label: "Connect your account", dot: "bg-amber" },
+  soon: { label: "Coming soon", dot: "bg-white/30" },
+};
+
+function Avatar() {
+  return <span aria-hidden className="size-7 shrink-0 rounded-full bg-[linear-gradient(135deg,#ff5a1f,#ffa04d)]" />;
+}
+
+function PreviewFrame({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
+  return (
+    <div className={cn("relative h-52 overflow-hidden rounded-2xl border border-white/8 bg-[#0e0c0a] p-4", dim && "opacity-45 saturate-50")}>
+      {children}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#0e0c0a] to-transparent" />
+    </div>
+  );
+}
+
+function ArticlePreview() {
+  return (
+    <PreviewFrame>
+      <p className="font-mono text-[10px] text-subtle">founderdesk.app/a/why-narrow-support</p>
+      <p className="mt-3 text-xl font-semibold leading-tight tracking-[-0.03em] text-fg">Why founders should start with narrow support workflows</p>
+      <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-fg-2">
+        Across the 42 B2B SaaS companies in the pilot, median first-response time improved by 60%<sup className="ml-0.5 text-accent-ink">S1</sup> after routing password resets first.
+      </p>
+      <div className="mt-3 flex gap-2 text-[11px]">
+        <span className="rounded-md bg-white/6 px-2 py-1 text-fg-2">S1 · Pilot report</span>
+        <span className="rounded-md bg-white/6 px-2 py-1 text-fg-2">S2 · Support benchmark</span>
+        <span className="rounded-md bg-green/12 px-2 py-1 text-green">✓ Verified live</span>
+      </div>
+    </PreviewFrame>
+  );
+}
+
+function SocialPreview({ network, dim }: { network: "x" | "linkedin"; dim?: boolean }) {
+  return (
+    <PreviewFrame dim={dim}>
+      <div className="flex items-center gap-2.5">
+        <Avatar />
+        <div className="min-w-0 text-[12px] leading-tight">
+          <p className="font-semibold text-fg">Dana Reyes</p>
+          <p className="text-subtle">{network === "x" ? "@danareyes · 2m" : "Founder at Northwind · 2m"}</p>
+        </div>
+        <span className="ml-auto text-[11px] font-bold text-fg-2">{network === "x" ? "𝕏" : "in"}</span>
+      </div>
+      <p className="mt-3 text-[13px] leading-relaxed text-fg">
+        {network === "x"
+          ? "We cut first-response time 60% by automating one boring thing first: password resets. Here's the data ↓"
+          : "Most founders try to automate all of support at once. The pilot data says start narrow — here's what 42 SaaS teams learned."}
+      </p>
+      <div className="mt-3 rounded-xl border border-white/10 p-2.5 text-[11px]">
+        <p className="text-subtle">founderdesk.app</p>
+        <p className="mt-0.5 text-fg-2">Why founders should start with narrow support workflows</p>
+      </div>
+    </PreviewFrame>
+  );
+}
+
+function NewsletterPreview() {
+  return (
+    <PreviewFrame dim>
+      <p className="text-[11px] text-subtle">From: Dana at Northwind</p>
+      <p className="mt-1 text-[13px] font-semibold text-fg">Subject: The 60% fix we almost skipped</p>
+      <div className="mt-3 space-y-1.5">
+        <div className="h-2 w-11/12 rounded bg-white/10" />
+        <div className="h-2 w-10/12 rounded bg-white/10" />
+        <div className="h-2 w-8/12 rounded bg-white/10" />
+      </div>
+      <span className="mt-4 inline-block rounded-md bg-accent px-2.5 py-1 text-[11px] font-semibold text-[#140a05]">Read the full piece</span>
+    </PreviewFrame>
+  );
+}
+
+function CarouselPreview() {
+  return (
+    <PreviewFrame dim>
+      <div className="flex h-full gap-2">
+        {["Start narrow.", "60% faster replies", "Resets → refunds → rest"].map((t, i) => (
+          <div key={t} className={cn("flex w-28 shrink-0 items-end rounded-xl p-2.5 text-[12px] font-semibold leading-tight", i === 0 ? "bg-[linear-gradient(160deg,#ff5a1f,#c21e33)] text-fg" : "bg-white/6 text-fg-2")}>
+            {t}
+          </div>
+        ))}
+      </div>
+    </PreviewFrame>
+  );
+}
+
+const CHANNELS: Array<{ key: string; name: string; title: string; body: string; status: ChannelStatus; preview: React.ReactNode; span?: string }> = [
+  { key: "web", name: "Web article", title: "A full article, with the receipts", body: "Your voice, a source beside every claim, verified live and checked on a phone.", status: "live", preview: <ArticlePreview />, span: "md:col-span-2" },
+  { key: "x", name: "X", title: "A post with a real hook", body: "One idea, a strong first line, a link back.", status: "connect", preview: <SocialPreview network="x" /> },
+  { key: "li", name: "LinkedIn", title: "Posts that sound like you", body: "Read back by ID before we call it published.", status: "connect", preview: <SocialPreview network="linkedin" /> },
+  { key: "nl", name: "Newsletter", title: "An issue ready to send", body: "A subject line and a tight issue pointing to the piece.", status: "soon", preview: <NewsletterPreview /> },
+  { key: "ig", name: "Instagram", title: "Carousels and captions", body: "Slide-by-slide copy from the approved article.", status: "soon", preview: <CarouselPreview /> },
 ];
 
 function Channels() {
@@ -272,23 +361,20 @@ function Channels() {
           One idea. <span className="serif-accent">Every</span> channel.
         </h2>
         <p className="mt-5 max-w-xl text-lg text-fg-2/80">Each destination is approved on its own, and nothing is called published until we&apos;ve read it back.</p>
-        <ul className="mt-14 grid gap-5 md:grid-cols-3">
+        <ul className="mt-12 grid gap-5 md:grid-cols-3">
           {CHANNELS.map((c) => (
-            <li key={c.tag} className={cn("flex flex-col justify-between rounded-3xl p-8", c.tone === "planned" ? "min-h-[260px]" : "min-h-[340px]", c.span, c.style)}>
-              <div className="flex items-start justify-between gap-3">
-                <span className="bg-white px-3 py-1.5 text-xs font-bold tracking-[0.08em] text-black">{c.tag}</span>
-                <span
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                    c.tone === "live" ? "bg-[#140a05]/15 text-[#140a05]" : c.tone === "connect" ? "bg-white/12 text-fg" : "border border-white/20 text-fg-2/70",
-                  )}
-                >
-                  {c.status}
-                </span>
-              </div>
-              <div className={c.span ? "max-w-lg" : ""}>
-                <h3 className={cn("leading-[1.05] font-semibold tracking-[-0.04em]", c.span ? "text-4xl md:text-5xl" : "text-[1.75rem] md:text-3xl", c.tone === "planned" && "text-fg/80")}>{c.title}</h3>
-                <p className={cn("mt-4 text-base leading-relaxed", c.tone === "live" ? "text-[#140a05]/80" : "text-fg-2/80")}>{c.body}</p>
+            <li key={c.key} className={cn("rounded-3xl border border-line bg-panel p-4 transition-colors hover:border-line-strong", c.span)}>
+              {c.preview}
+              <div className="px-2 pt-5 pb-2">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold tracking-[0.08em] text-fg-2 uppercase">{c.name}</span>
+                  <span className="inline-flex items-center gap-1.5 text-muted">
+                    <span aria-hidden className={cn("size-1.5 rounded-full", STATUS[c.status].dot)} />
+                    {STATUS[c.status].label}
+                  </span>
+                </div>
+                <h3 className="mt-2.5 text-xl font-semibold tracking-[-0.03em] text-fg">{c.title}</h3>
+                <p className="mt-1.5 text-[15px] leading-relaxed text-fg-2/80">{c.body}</p>
               </div>
             </li>
           ))}
@@ -381,13 +467,13 @@ function Pricing() {
   return (
     <section id="pricing" className="hairline-t scroll-mt-16">
       <div className="frame px-4 py-20 md:px-12">
-        <SectionHead label="[04] Pricing" title="One article. One price." lede="A first-article price while we learn what founders need most." />
+        <SectionHead label="[04] Pricing" title="One article. One price." lede="Try it free. Confirm your email and your first researched, reviewed article is on us." />
         <div className="mt-12 grid gap-4 md:grid-cols-[1.3fr_1fr]">
           <div className="panel flex flex-col p-6 md:p-8">
-            <p className="text-sm text-muted">First article</p>
+            <p className="text-sm text-muted">Your first article is free</p>
             <p className="mt-3 flex items-baseline gap-2">
               <span className="text-5xl font-medium tracking-[-0.04em] text-fg">$9</span>
-              <span className="text-sm text-muted">one-time</span>
+              <span className="text-sm text-muted">per article after that</span>
             </p>
             <ul className="mt-8 space-y-3 text-sm text-fg-2">
               {included.map((x) => (
