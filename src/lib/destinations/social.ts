@@ -20,7 +20,8 @@ export type Adapter = {
   label: string;
   maxLength: number;
   connected(): boolean;
-  post(text: string): Promise<PostResult>;
+  /** Post `text`; `thread` continues as replies where the network supports it. */
+  post(text: string, thread?: string[]): Promise<PostResult>;
   verify(externalId: string): Promise<{ ok: boolean; detail: string }>;
 };
 
@@ -29,12 +30,13 @@ const x: Adapter = {
   label: "X",
   maxLength: 280,
   connected: () => Boolean(env().X_USER_ACCESS_TOKEN),
-  async post(text) {
-    const { data } = await requestJson<{ data: { id: string } }>("x", "https://api.x.com/2/tweets", {
-      token: env().X_USER_ACCESS_TOKEN,
-      body: { text },
-    });
-    return { externalId: data.data.id, url: `https://x.com/i/web/status/${data.data.id}` };
+  async post(text, thread = []) {
+    const send = (body: Record<string, unknown>) =>
+      requestJson<{ data: { id: string } }>("x", "https://api.x.com/2/tweets", { token: env().X_USER_ACCESS_TOKEN, body });
+    const first = (await send({ text })).data.data.id;
+    let parent = first;
+    for (const t of thread) parent = (await send({ text: t, reply: { in_reply_to_tweet_id: parent } })).data.data.id;
+    return { externalId: first, url: `https://x.com/i/web/status/${first}` };
   },
   async verify(id) {
     const { data } = await requestJson<{ data?: { id: string; text: string } }>("x", `https://api.x.com/2/tweets/${encodeURIComponent(id)}`, {
@@ -51,7 +53,8 @@ const linkedin: Adapter = {
   label: "LinkedIn",
   maxLength: 3000,
   connected: () => Boolean(env().LINKEDIN_ACCESS_TOKEN && env().LINKEDIN_AUTHOR_URN),
-  async post(text) {
+  async post(text, thread = []) {
+    if (thread.length) text = [text, ...thread].join("\n\n");
     const res = await fetch("https://api.linkedin.com/rest/posts", {
       method: "POST",
       headers: {

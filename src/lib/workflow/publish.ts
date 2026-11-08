@@ -45,12 +45,12 @@ export async function submitFounderEdit(args: { jobId: string; baseDraftId: stri
   if (!base || base.id !== args.baseDraftId) throw new GateError("A newer version exists. Reload before editing.");
   const content = { title: args.title.trim(), dek: args.dek.trim(), bodyMarkdown: args.bodyMarkdown.replace(/\r\n/g, "\n").trim(), announcement: args.announcement.trim() };
   if (!content.title || content.bodyMarkdown.length < 100) throw new GateError("The edited article is too short.");
-  const hash = draftContentHash(content);
+  const hash = draftContentHash({ ...content, variants: base.variants });
   if (hash === base.contentHash) throw new GateError("No changes to submit.");
   const db = await getDb();
   const [draft] = await db
     .insert(drafts)
-    .values({ jobId: job.id, version: base.version + 1, author: "founder_edit", ...content, claims: base.claims, corrections: [], contentHash: hash })
+    .values({ jobId: job.id, version: base.version + 1, author: "founder_edit", ...content, claims: base.claims, corrections: [], variants: base.variants, contentHash: hash })
     .returning();
   // An edited article goes back through review before it can be approved.
   if (await transition(job.id, ["READY_FOR_APPROVAL"], "REVIEWING", "Reviewing the founder's edits")) {
@@ -142,12 +142,16 @@ registerHandler("publish", {
     if (existing && !existing.externalId) {
       throw new PermanentError(`An earlier ${adapter.label} post attempt may have gone through. Check the account before retrying.`);
     }
-    const text = renderAnnouncement(draft.announcement, web.url!, adapter.maxLength);
+    const variant = destination === "x" ? draft.variants.x : destination === "linkedin" ? draft.variants.linkedin : undefined;
+    const posts = Array.isArray(variant)
+      ? variant.map((t) => renderAnnouncement(t, web.url!, adapter.maxLength))
+      : [renderAnnouncement(variant ?? draft.announcement, web.url!, adapter.maxLength)];
+    const text = posts[0]!;
     const [row] = await db
       .insert(publications)
       .values({ jobId: job.id, draftId: draft.id, approvalId: approval.id, destination, contentHash: draft.contentHash, status: "publishing" })
       .returning();
-    const posted = await adapter.post(text);
+    const posted = await adapter.post(text, posts.slice(1));
     await db.update(publications).set({ externalId: posted.externalId, url: posted.url }).where(eq(publications.id, row!.id));
     const check = await adapter.verify(posted.externalId);
     const verification = { ok: check.ok, checkedAt: new Date().toISOString(), detail: check.detail };

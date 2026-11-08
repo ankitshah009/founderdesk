@@ -52,6 +52,30 @@ async function Article({ params }: PageProps<"/a/[slug]">) {
       <meta property="og:description" content={draft.dek} />
       <meta property="og:type" content="article" />
       <meta name="founderdesk:content-hash" content={pub.contentHash} />
+      <link rel="canonical" href={pub.url ?? undefined} />
+      <meta property="og:url" content={pub.url ?? undefined} />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={draft.title} />
+      <meta name="twitter:description" content={draft.dek} />
+      {job.founderName ? <meta name="author" content={job.founderName} /> : null}
+      <script
+        type="application/ld+json"
+        // JSON.stringify output with "<" escaped cannot break out of the script tag.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Article",
+            headline: draft.title,
+            description: draft.dek,
+            datePublished: pub.createdAt.toISOString(),
+            dateModified: pub.createdAt.toISOString(),
+            mainEntityOfPage: pub.url,
+            author: job.founderName ? { "@type": "Person", name: job.founderName } : undefined,
+            publisher: { "@type": "Organization", name: "FounderDesk" },
+            citation: citedSources.filter((s) => s.url).map((s) => ({ "@type": "CreativeWork", name: s.title ?? s.url, url: s.url })),
+          }).replace(/</g, "\\u003c"),
+        }}
+      />
       <main className="flex-1">
         <article className="mx-auto max-w-[720px] px-4 pt-16 pb-20 md:pt-24">
           <p className="mono-label">{date}</p>

@@ -179,3 +179,35 @@ describe("reviewer does not stall on minor questions", () => {
     expect(decideOutcome({ agentOutcome: null, findings: [fig], job: repliedOther, revisionCycles: 0, maxRevisionCycles: 2 }).outcome).toBe("NEEDS_REVISION");
   });
 });
+
+describe("platform-native versions", () => {
+  const job = {
+    topic: "Narrow support", thesis: "why founders should start with narrow support workflows", audience: "early-stage SaaS founders",
+    seedText: "- We cut first-response time by 60% in six weeks.\n- Start with password resets.", boundaries: [], privateTerms: ["Acme Robotics"], founderReplies: [], openQuestions: [],
+  } as never;
+
+  it("writes an X thread within 280 chars per post and a LinkedIn post, with the link at the end", async () => {
+    const { localWrite } = await import("@/lib/workflow/editorial");
+    const d = localWrite({ job, sources: [], evidence: [], findings: [] });
+    expect(d.variants?.x?.length).toBeGreaterThan(1);
+    expect(d.variants!.x!.every((t) => t.length <= 280)).toBe(true);
+    expect(d.variants!.x!.at(-1)).toContain("{{url}}");
+    expect(d.variants!.linkedin!.length).toBeLessThanOrEqual(3000);
+    expect(d.variants!.linkedin!.trim().endsWith("{{url}}")).toBe(true);
+  });
+
+  it("guardrails catch an unsupported figure or private name inside a social post", async () => {
+    const { runGuardrails } = await import("@/lib/workflow/editorial");
+    const src = [{ ref: "S1", kind: "attachment", url: null, title: "Pilot", status: "fetched", snippet: null, content: "Across the pilot, median first-response time improved by 60% after routing password resets." }];
+    const draft = { title: "T", dek: "D", bodyMarkdown: "Body.\n\n## Sources\n\n- [S1] Pilot", announcement: "A", claims: [], variants: { x: ["Our first-response time improved by 85% after routing password resets.", "Thanks Acme Robotics! {{url}}"] } };
+    const kinds = runGuardrails({ job, draft, sources: src as never, revisionCycles: 0, maxRevisionCycles: 2 }).map((f) => f.kind);
+    expect(kinds).toContain("figure_mismatch");
+    expect(kinds).toContain("boundary_violation");
+  });
+
+  it("approval binds to the posts too: changing a post changes the content hash", () => {
+    const base = { title: "T", dek: "D", bodyMarkdown: "B", announcement: "A", variants: { x: ["one {{url}}"] } };
+    expect(draftContentHash(base)).not.toBe(draftContentHash({ ...base, variants: { x: ["two {{url}}"] } }));
+    expect(draftContentHash({ ...base, variants: {} })).toBe(draftContentHash({ title: "T", dek: "D", bodyMarkdown: "B", announcement: "A" }));
+  });
+});

@@ -1,0 +1,1 @@
+ALTER TABLE "drafts" ADD COLUMN "variants" jsonb DEFAULT '{}'::jsonb NOT NULL;

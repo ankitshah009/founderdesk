@@ -43,8 +43,9 @@ export function sha256(input: string): string {
 }
 
 /** The hash an approval is bound to: exactly what will be published. */
-export function draftContentHash(d: { title: string; dek: string; bodyMarkdown: string; announcement: string }): string {
-  return sha256(JSON.stringify([d.title, d.dek, d.bodyMarkdown, d.announcement]));
+export function draftContentHash(d: { title: string; dek: string; bodyMarkdown: string; announcement: string; variants?: unknown }): string {
+  const v = d.variants && Object.keys(d.variants as object).length ? [d.variants] : [];
+  return sha256(JSON.stringify([d.title, d.dek, d.bodyMarkdown, d.announcement, ...v]));
 }
 
 export function safeEqual(a: string, b: string): boolean {

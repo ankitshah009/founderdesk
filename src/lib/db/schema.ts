@@ -61,6 +61,9 @@ export type Finding = {
 
 export type Claim = { text: string; sourceIds: string[] };
 
+/** Platform-native versions of the announcement, written and approved per channel. */
+export type ChannelVariants = { x?: string[]; linkedin?: string };
+
 export const jobs = pgTable(
   "jobs",
   {
@@ -153,6 +156,7 @@ export const drafts = pgTable(
     announcement: text("announcement").notNull(),
     claims: jsonb("claims").$type<Claim[]>().notNull().default([]),
     corrections: jsonb("corrections").$type<string[]>().notNull().default([]),
+    variants: jsonb("variants").$type<ChannelVariants>().notNull().default({}),
     contentHash: text("content_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

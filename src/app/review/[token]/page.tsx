@@ -62,9 +62,32 @@ async function Review({ params }: PageProps<"/review/[token]">) {
           <div className="mt-8 border-t border-line pt-2">
             <Markdown source={draft.bodyMarkdown} skipSources opts={{ citeHref: (ref) => `#src-${ref}` }} />
           </div>
-          <div className="mt-12 rounded-xl border border-line bg-panel p-5">
-            <MonoLabel>Announcement</MonoLabel>
-            <p className="mt-2 text-sm text-fg-2">{draft.announcement.replace("{{url}}", web?.url ?? links.article(articleSlug(draft.title, job.id)))}</p>
+          <div className="mt-12 space-y-4">
+            <MonoLabel>How it will be announced</MonoLabel>
+            {draft.variants.x?.length ? (
+              <div className="rounded-xl border border-line bg-panel p-5">
+                <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">X · thread of {draft.variants.x.length}</p>
+                <ol className="space-y-3">
+                  {draft.variants.x.map((t, i) => (
+                    <li key={i} className="flex gap-3 text-sm text-fg-2">
+                      <span className="w-5 shrink-0 text-xs text-subtle">{i + 1}/</span>
+                      <span className="whitespace-pre-wrap">{t.replace("{{url}}", web?.url ?? links.article(articleSlug(draft.title, job.id)))}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+            {draft.variants.linkedin ? (
+              <div className="rounded-xl border border-line bg-panel p-5">
+                <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-fg-2 uppercase">LinkedIn</p>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg-2">{draft.variants.linkedin.replace("{{url}}", web?.url ?? links.article(articleSlug(draft.title, job.id)))}</p>
+              </div>
+            ) : null}
+            {!draft.variants.x?.length && !draft.variants.linkedin ? (
+              <div className="rounded-xl border border-line bg-panel p-5">
+                <p className="text-sm text-fg-2">{draft.announcement.replace("{{url}}", web?.url ?? links.article(articleSlug(draft.title, job.id)))}</p>
+              </div>
+            ) : null}
           </div>
         </div>
       </article>

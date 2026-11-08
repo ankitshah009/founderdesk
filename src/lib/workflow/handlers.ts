@@ -359,7 +359,8 @@ registerHandler("write", {
         announcement: out.announcement,
         claims: out.claims.map((c) => ({ text: c.text, sourceIds: c.sourceRefs })),
         corrections: out.corrections,
-        contentHash: draftContentHash(out),
+        variants: out.variants ?? {},
+        contentHash: draftContentHash({ ...out, variants: out.variants ?? {} }),
       })
       .onConflictDoNothing()
       .returning();

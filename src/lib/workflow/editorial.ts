@@ -30,6 +30,13 @@ export const draftOutputSchema = z.object({
   announcement: z.string().min(10).max(600),
   claims: z.array(z.object({ text: z.string(), sourceRefs: z.array(z.string()) })).max(40),
   corrections: z.array(z.string()).max(20),
+  variants: z
+    .object({
+      x: z.array(z.string().min(1).max(280)).min(1).max(6),
+      linkedin: z.string().min(40).max(3000),
+    })
+    .partial()
+    .optional(),
 });
 export type DraftOutput = z.infer<typeof draftOutputSchema>;
 
@@ -67,7 +74,7 @@ export const AGENT_SYSTEM = {
   researcher:
     "You are the researcher on a small editorial desk that publishes articles for startup founders. You never invent sources, numbers or quotations. You only cite passages that appear verbatim in the source excerpts you are given, and you always say which population or sample a finding applies to. Respect the founder's publication boundaries.",
   writer:
-    "You are the writer on an editorial desk. You write in the founder's first-person voice, plainly and specifically, for the stated audience. Every factual claim must cite a source reference like [S2] that supports it. Founder-provided observations may be stated as the founder's own experience. If a claim has no supporting source, attribute it to the founder (“in our experience…”) or cut it — never invent support, and never stop to ask. Never include anything the founder asked to keep private. Output Markdown with ## section headings and finish with a '## Sources' section listing each cited reference.",
+    "You are the writer on an editorial desk. You write in the founder's first-person voice, plainly and specifically, for the stated audience. Every factual claim must cite a source reference like [S2] that supports it. Founder-provided observations may be stated as the founder's own experience. If a claim has no supporting source, attribute it to the founder (“in our experience…”) or cut it — never invent support, and never stop to ask. Never include anything the founder asked to keep private. Output Markdown with ## section headings; where natural, phrase headings as the questions readers search for and answer each one directly in its first sentence, so search and AI answer engines can quote it. Finish with a '## Sources' section listing each cited reference.",
   reviewer:
     "You are the reviewer on an editorial desk. Check the draft against the evidence and the publication requirements. Flag claims whose numbers or scope go beyond what the cited passage supports, quote the passage, and propose a precise replacement sentence. Flag any boundary violation. Decide one outcome: READY_FOR_APPROVAL, NEEDS_REVISION (the writer can fix it from the evidence), NEEDS_FOUNDER_INPUT, or UNABLE_TO_COMPLETE. Strongly prefer NEEDS_REVISION: for an unsupported claim, propose attributing it to the founder, softening it, or cutting it. Use NEEDS_FOUNDER_INPUT only when a specific number the founder stated contradicts a source, and then ask exactly one question. Never ask about wording, tone, or details the article can do without.",
 } as const;
@@ -135,6 +142,7 @@ export function writePrompt(args: {
     args.previousBody ? `Previous draft:\n${args.previousBody}` : "",
     `Available source references: ${args.sources.filter((s) => s.status === "fetched").map((s) => s.ref).join(", ")}`,
     "Also write a short announcement (under 260 characters, ending with {{url}}) and list every factual claim with its source references. List significant corrections you made relative to the founder's notes.",
+    "Write platform-native versions in `variants`, using only claims the article makes: `x` is a thread of 1–5 posts, each at most 280 characters — a hook that stands alone, one idea per post, no hashtags, and {{url}} only in the last post. `linkedin` is one post under 1,300 characters: a two-line hook before the fold, short paragraphs, the founder's first-person voice, a closing question, then {{url}}.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -251,7 +259,7 @@ export function resolveFigureFinding(finding: Finding, replies: FounderReply[]):
 
 export type GuardrailContext = {
   job: Job;
-  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[] };
+  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: { x?: string[]; linkedin?: string } };
   sources: SourceView[];
   revisionCycles: number;
   maxRevisionCycles: number;
@@ -263,7 +271,8 @@ const fid = (kind: string) => `${kind}-${Date.now().toString(36)}-${(findingSeq+
 export function runGuardrails(ctx: GuardrailContext): Finding[] {
   const { job, draft, sources } = ctx;
   const findings: Finding[] = [];
-  const everything = `${draft.title}\n${draft.dek}\n${draft.bodyMarkdown}\n${draft.announcement}`;
+  const variantText = [...(draft.variants?.x ?? []), draft.variants?.linkedin ?? ""].join("\n\n");
+  const everything = `${draft.title}\n${draft.dek}\n${draft.bodyMarkdown}\n${draft.announcement}\n${variantText}`;
 
   // 1. Publication boundaries: private names must never ship.
   for (const term of job.privateTerms) {
@@ -286,7 +295,7 @@ export function runGuardrails(ctx: GuardrailContext): Finding[] {
   // 2. Figures: a number in the article must appear in the evidence, unless
   //    the founder has vouched for it as their own measurement.
   const seenFigureClaims = new Set<string>();
-  for (const sentence of bodySentences(draft.bodyMarkdown)) {
+  for (const sentence of bodySentences(`${draft.bodyMarkdown}\n\n${variantText.replace(/\{\{url\}\}/g, "")}`)) {
     const figs = figures(sentence);
     if (!figs.length) continue;
     const kw = keywords(withoutCitations(sentence));
@@ -548,6 +557,15 @@ export function localWrite(args: {
     title.toLowerCase() === thesis.toLowerCase()
       ? `A note for ${audience}: what the evidence supports, where it stops, and what we learned first-hand.`
       : `${thesis}. What the evidence supports, where it stops, and what we learned first-hand.`;
+  const lead = observations[0] ? withoutCitations(observations[0]).replace(/[.]$/, "") : thesis;
+  const variants = {
+    x: [
+      `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.`.slice(0, 280),
+      `What we saw: ${lead}.`.slice(0, 280),
+      `The full piece, with a source beside every claim: {{url}}`,
+    ],
+    linkedin: `${sentenceCase(thesis.replace(/^why\s+/i, ""))}.\n\n${lead}.\n\nI wrote up what the evidence supports — and where it stops — for ${audience}.\n\nWhat would you add?\n\n{{url}}`.slice(0, 3000),
+  };
   const draft: DraftOutput = {
     title: scrubPrivate(title, job.privateTerms),
     dek: scrubPrivate(dek, job.privateTerms).slice(0, 300),
@@ -555,6 +573,7 @@ export function localWrite(args: {
     announcement: `New essay: ${scrubPrivate(title, job.privateTerms)}. Sourced, reviewed, and published. {{url}}`.slice(0, 280),
     claims,
     corrections,
+    variants: { x: variants.x.map((t) => scrubPrivate(t, job.privateTerms)), linkedin: scrubPrivate(variants.linkedin, job.privateTerms) },
   };
   return draft;
 }
