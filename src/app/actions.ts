@@ -304,11 +304,11 @@ async function saveSignupDetails(email: string, name: string, website: string) {
 }
 
 /** Development-only: the simulated Google account chooser (never in production). */
-export async function simulatedGoogleSignIn(form: FormData): Promise<void> {
+export async function simulatedGoogleSignIn(_: { error?: string } | null, form: FormData): Promise<{ error?: string } | null> {
   const { googleSimulated, safeNext } = await import("@/lib/auth-google");
-  if (!googleSimulated()) throw new Error("Simulated Google sign-in is not available.");
+  if (!googleSimulated()) return { error: "Simulated Google sign-in is not available." };
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Enter a full email address, like you@gmail.com." };
   const { audit, createSession } = await import("@/lib/auth");
   await createSession(email);
   await audit("signin.google_simulated", email);
