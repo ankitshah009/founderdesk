@@ -88,8 +88,9 @@ function traitsOf(s: Stats): string[] {
 }
 
 export function analyzeVoice(samples: string[], now = new Date()): VoiceProfile | null {
-  const usable = samples.map((s) => s.trim()).filter((s) => wordsOf(proseOf(s)).length >= 40);
-  if (!usable.length) return null;
+  // Any length of sample counts; the profile just needs a little writing overall.
+  const usable = samples.map((s) => s.trim()).filter((s) => wordsOf(proseOf(s)).length > 0);
+  if (wordsOf(proseOf(usable.join("\n\n"))).length < 20) return null;
   const s = textStats(usable.join("\n\n"));
   return {
     sampleCount: usable.length,

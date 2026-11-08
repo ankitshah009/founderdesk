@@ -30,6 +30,7 @@ export function StudioNavLinks({ path }: { path: string | null }) {
               {groupStart ? <p className="mono-label mb-2 hidden md:block">{l.group}</p> : null}
               <Link
                 href={l.href}
+                data-tour={l.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "relative block whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors",

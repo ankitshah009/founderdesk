@@ -199,7 +199,7 @@ export async function addSample(_: StudioState, form: FormData): Promise<StudioS
       source = page.url.toString();
       title ||= page.url.hostname + page.url.pathname;
     }
-    if (wordCount(content) < 60) return { error: "A sample needs at least 60 words of your writing to learn from." };
+    if (!content.trim()) return { error: "Paste some of your writing, or a link to it." };
     await addKnowledge(email, [{ kind: "sample", title: title || `Writing sample (${new Date().toLocaleDateString("en-US")})`, content, url: source }]);
     refresh();
     return { ok: "Sample added. Your voice profile was re-learned." };
@@ -554,4 +554,29 @@ export async function adaptForPersona(form: FormData): Promise<void> {
     personaId: persona.id,
   });
   redirect(links.orderPath(next.id));
+}
+
+/* ── Setup helpers: starter voices and persona confirmation ─────────────── */
+
+export async function addStarterSample(_: StudioState, form: FormData): Promise<StudioState> {
+  try {
+    const { email } = await requireStudio();
+    const { STARTER_VOICES } = await import("@/lib/studio/presets");
+    const v = STARTER_VOICES.find((x) => x.id === str(form, "starter"));
+    if (!v) return { error: "Pick one of the starter voices." };
+    const existing = await listKnowledge(email);
+    if (existing.some((k) => k.kind === "sample" && k.title === `Starter voice: ${v.name}`)) return { ok: `${v.name} is already in your samples.` };
+    await addKnowledge(email, [{ kind: "sample", title: `Starter voice: ${v.name}`, content: v.sample }]);
+    refresh();
+    return { ok: `Added the ${v.name.toLowerCase()} starter. Replace it with your own writing any time.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function confirmPersonas(): Promise<void> {
+  const { email } = await requireStudio();
+  const profile = await getProfile(email);
+  await updateProfile(email, { setup: { ...profile.setup, personasConfirmed: true } });
+  refresh();
 }

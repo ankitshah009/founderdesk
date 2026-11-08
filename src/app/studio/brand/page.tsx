@@ -3,13 +3,16 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { Trash2 } from "lucide-react";
 import { ActionForm } from "@/components/studio/action-form";
+import { SetupProgress } from "@/components/studio/setup-progress";
+import { StarterVoices } from "@/components/studio/starter-voices";
 import { Card, PageHead, SignedOut, Skeleton, StatBar, timeAgo } from "@/components/studio/shared";
-import { Chip, Field, MonoLabel, inputClass } from "@/components/ui";
+import { Button, Chip, Field, MonoLabel, inputClass } from "@/components/ui";
 import type { Persona, VoiceProfile } from "@/lib/db/schema";
 import { studioSession } from "@/lib/studio/session";
-import { getProfile, listKnowledge } from "@/lib/studio/store";
+import { setupSteps } from "@/lib/studio/setup";
+import { founderJobs, getProfile, listKnowledge } from "@/lib/studio/store";
 import { termLines } from "@/lib/studio/style";
-import { addSample, deleteKnowledge, deletePersona, savePersona, saveStyle } from "../actions";
+import { addSample, confirmPersonas, deleteKnowledge, deletePersona, savePersona, saveStyle } from "../actions";
 
 export const metadata: Metadata = { title: "Brand & voice" };
 
@@ -27,13 +30,17 @@ async function BrandVoice() {
   await connection();
   const session = await studioSession();
   if (!session) return <SignedOut />;
-  const [profile, knowledge] = await Promise.all([getProfile(session.email), listKnowledge(session.email)]);
+  const [profile, knowledge, jobs] = await Promise.all([getProfile(session.email), listKnowledge(session.email), founderJobs(session.email)]);
   const samples = knowledge.filter((k) => k.kind === "sample");
   const g = profile.styleGuide;
+  const steps = setupSteps(profile, { samples: samples.length, jobs: jobs.length });
+  const personasDone = steps.find((s) => s.key === "personas")!.done;
 
   return (
     <>
       <PageHead label="Brand & voice" title="Sound like you, every time" lede="Writing samples teach the Writer your voice. The style guide and personas tell the Editor what to enforce and who you're writing for." />
+
+      <SetupProgress steps={steps} current={["voice", "style", "personas"]} />
 
       <section id="voice" className="grid scroll-mt-28 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="space-y-5">
@@ -65,14 +72,17 @@ async function BrandVoice() {
                 ))}
               </ul>
             ) : (
-              <p className="mb-6 text-sm text-muted">No samples yet. Add two or three pieces you wrote yourself — posts, newsletters, long emails.</p>
+              <p className="mb-4 text-sm text-muted">No samples yet. Add a piece or two you wrote yourself: posts, newsletters, long emails. Optional; drafts still work without it.</p>
             )}
+            <div className="mb-6">
+              <StarterVoices have={samples.map((s) => s.title)} />
+            </div>
             <ActionForm action={addSample} submit="Add sample" pendingLabel="Learning…">
               <Field label="Link to something you wrote" hint="A blog post or newsletter issue. We fetch the page and keep the text.">
                 <input name="url" type="text" inputMode="url" placeholder="https://yourblog.com/post" className={inputClass} />
               </Field>
               <Field label="Or paste text">
-                <textarea name="text" rows={5} className={inputClass} placeholder="At least 60 words of your own writing" />
+                <textarea name="text" rows={5} className={inputClass} placeholder="A post, newsletter or email you wrote. Any length; more writing gives a sharper profile." />
               </Field>
               <Field label="Title (optional)">
                 <input name="title" className={inputClass} />
@@ -107,7 +117,14 @@ async function BrandVoice() {
       <section id="personas" className="mt-10 scroll-mt-28">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-[15px] font-semibold text-fg">Personas</h2>
-          <span className="text-xs text-muted">Who each article is written for</span>
+          {personasDone ? (
+            <span className="text-xs text-green">✓ Personas set</span>
+          ) : (
+            <form action={confirmPersonas} className="flex items-center gap-3">
+              <span className="text-xs text-muted">Who each article is written for</span>
+              <Button type="submit">These look right</Button>
+            </form>
+          )}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           {profile.personas.map((p) => (
@@ -126,7 +143,7 @@ function VoiceCard({ voice }: { voice: VoiceProfile | null }) {
   if (!voice) {
     return (
       <Card title="Voice profile">
-        <p className="text-sm text-muted">Add a writing sample of at least 40 words and we&apos;ll measure your voice: sentence length, contractions, first person, questions and reading ease.</p>
+        <p className="text-sm text-muted">Add a writing sample (or a starter voice) and we&apos;ll measure your voice: sentence length, contractions, first person, questions and reading ease.</p>
       </Card>
     );
   }

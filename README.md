@@ -60,7 +60,7 @@ Copy `.env.example` to `.env.local` and fill in what you have. Each integration 
 | X / LinkedIn | user token / token + author URN | optional announcement destinations |
 | MCP | `MCP_API_KEY` | see `/desk/connect` (Claude Code, Muse via `mcp-remote`) |
 
-Production also requires `APP_SECRET` (signs private links), `DESK_TOKEN` (operator desk) and `CRON_SECRET` (the per-minute `/api/cron/tick` backstop in `vercel.json`).
+Production also requires `APP_SECRET` (signs private links), `DESK_TOKEN` (operator desk) and `CRON_SECRET` (auth for the `/api/cron/tick` backstop). `vercel.json` runs it daily, which fits the Vercel Hobby plan; work still moves without it, because webhooks and open pages drive the queue. For a tighter backstop, point any external scheduler at `/api/cron/tick` with `Authorization: Bearer $CRON_SECRET`, or on Vercel Pro set the schedule back to `* * * * *`.
 
 ## How it stays correct
 

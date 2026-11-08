@@ -183,3 +183,10 @@ export async function getIdea(email: string, id: string) {
 }
 
 export const todayYmd = () => ymd(new Date());
+
+/** The five setup steps for a founder, with what's done (see lib/studio/setup). */
+export async function setupState(email: string) {
+  const { setupSteps } = await import("./setup");
+  const [profile, knowledge, jobsList] = await Promise.all([getProfile(email), listKnowledge(email), founderJobs(email)]);
+  return setupSteps(profile, { samples: knowledge.filter((k) => k.kind === "sample").length, jobs: jobsList.length });
+}

@@ -81,3 +81,39 @@ export const AGENT_TEAM: Array<{ role: AgentRole; name: string; does: string; ch
 ];
 
 export const CUSTOM_AGENT_TITLES = ["Weekly columnist", "Industry analyst", "Newsletter editor", "Launch writer", "Investor relations"] as const;
+
+/**
+ * Built-in starter voices for founders with nothing written yet. Each is a
+ * short sample in a recognisable style; adding one teaches the voice profile
+ * that style until the founder's own writing replaces it.
+ */
+export const STARTER_VOICES: Array<{ id: string; name: string; blurb: string; sample: string }> = [
+  {
+    id: "plain",
+    name: "Plain-spoken founder",
+    blurb: "Short sentences, first person, no jargon.",
+    sample:
+      "We shipped a smaller version of the feature last week. It's not perfect. But customers are using it, and that tells us more than another month of planning would. Here's what I learned: ship the part people asked for, watch what they do, then decide. We'll share the numbers next week, good or bad.",
+  },
+  {
+    id: "technical",
+    name: "Technical builder",
+    blurb: "Precise, explains how things work, honest trade-offs.",
+    sample:
+      "Our first architecture queued every request through a single worker, which kept the code simple but capped throughput at about forty jobs a minute. We moved to leased rows in Postgres with FOR UPDATE SKIP LOCKED, so any number of workers can claim work safely. The trade-off is more database load; at our scale that is cheaper than running a separate queue.",
+  },
+  {
+    id: "story",
+    name: "Storyteller",
+    blurb: "Opens with a moment, builds to a lesson.",
+    sample:
+      "The call came at 11pm. Our biggest customer was about to churn, and I had no idea why. I drove to their office the next morning with a notebook and no slides. Two hours later I understood: we had built exactly what they asked for, and nothing they needed. That meeting changed our roadmap, and it changed how I listen.",
+  },
+  {
+    id: "analyst",
+    name: "Data-driven operator",
+    blurb: "Leads with numbers, separates evidence from opinion.",
+    sample:
+      "Three numbers explain our quarter. Activation rose from 31% to 44% after we cut onboarding to four steps. Net revenue retention held at 112%. Support tickets per account fell by a third. My read, which is opinion rather than evidence: the onboarding change mattered most, because every downstream metric moved within two weeks of it.",
+  },
+];

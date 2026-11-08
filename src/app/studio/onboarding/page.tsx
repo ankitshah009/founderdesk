@@ -4,11 +4,14 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
 import { ActionForm } from "@/components/studio/action-form";
+import { SetupProgress } from "@/components/studio/setup-progress";
+import { StarterVoices } from "@/components/studio/starter-voices";
 import { Card, PageHead, SignedOut, Skeleton } from "@/components/studio/shared";
 import { Button, Chip, Field, MonoLabel, inputClass } from "@/components/ui";
 import type { Brand } from "@/lib/db/schema";
 import { studioSession } from "@/lib/studio/session";
-import { getProfile, listKnowledge } from "@/lib/studio/store";
+import { setupSteps } from "@/lib/studio/setup";
+import { founderJobs, getProfile, listKnowledge } from "@/lib/studio/store";
 import { captureBrand, finishOnboarding, saveBrand } from "../actions";
 
 export const metadata: Metadata = { title: "Onboarding" };
@@ -35,9 +38,10 @@ async function Onboarding() {
   await connection();
   const session = await studioSession();
   if (!session) return <SignedOut />;
-  const [profile, knowledge] = await Promise.all([getProfile(session.email), listKnowledge(session.email)]);
+  const [profile, knowledge, jobs] = await Promise.all([getProfile(session.email), listKnowledge(session.email), founderJobs(session.email)]);
   const brand = profile.brand;
   const samples = knowledge.filter((k) => k.kind === "sample").length;
+  const steps = setupSteps(profile, { samples, jobs: jobs.length });
 
   return (
     <>
@@ -48,6 +52,8 @@ async function Onboarding() {
       >
         {profile.onboardedAt ? <Chip tone="green">Onboarded</Chip> : null}
       </PageHead>
+
+      <SetupProgress steps={steps} current={["brand", "voice"]} />
 
       <section className="mb-10">
         <Step n={1} title="Tell us about your company" />
@@ -92,18 +98,21 @@ async function Onboarding() {
                 ? `${samples} writing sample${samples === 1 ? "" : "s"} saved. Add a few posts, newsletters or emails you wrote yourself so drafts sound like you, not like marketing copy.`
                 : "Paste a few posts, newsletters or emails you wrote yourself. The writer matches your sentence length, contractions and signature phrases."}
             </p>
-            <Link href="/studio/brand" className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-ink hover:text-accent">
-              Brand &amp; voice <ArrowRight className="size-3.5" aria-hidden />
+            <Link href="/studio/brand#voice" className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-ink hover:text-accent">
+              Paste your own <ArrowRight className="size-3.5" aria-hidden />
             </Link>
+          </div>
+          <div className="mt-5 border-t border-line pt-5">
+            <StarterVoices have={knowledge.filter((k) => k.kind === "sample").map((k) => k.title)} />
           </div>
         </Card>
       </section>
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
         <form action={finishOnboarding}>
-          <Button type="submit" disabled={!brand}>{profile.onboardedAt ? "Back to overview" : "Finish setup"}</Button>
+          <Button type="submit">{profile.onboardedAt ? "Back to overview" : brand ? "Finish setup" : "Skip for now"}</Button>
         </form>
-        {!brand ? <span className="text-sm text-muted">Capture your brand first.</span> : null}
+        {!brand ? <span className="text-sm text-muted">Everything here is optional. You can come back any time.</span> : null}
       </div>
     </>
   );
