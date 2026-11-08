@@ -64,6 +64,27 @@ const schema = z.object({
   LINKEDIN_ACCESS_TOKEN: optional,
   LINKEDIN_AUTHOR_URN: optional,
 
+  /** "true" enables the one-click demo workspace outside development. */
+  DEMO_WORKSPACE: optional,
+
+  WORDPRESS_URL: optional,
+  WORDPRESS_USER: optional,
+  WORDPRESS_APP_PASSWORD: optional,
+  GHOST_ADMIN_URL: optional,
+  GHOST_ADMIN_KEY: optional,
+  WEBFLOW_TOKEN: optional,
+  WEBFLOW_COLLECTION_ID: optional,
+
+  GOOGLE_CLIENT_ID: optional,
+  GOOGLE_CLIENT_SECRET: optional,
+
+  X_CLIENT_ID: optional,
+  X_CLIENT_SECRET: optional,
+  LINKEDIN_CLIENT_ID: optional,
+  LINKEDIN_CLIENT_SECRET: optional,
+  INSTAGRAM_APP_ID: optional,
+  INSTAGRAM_APP_SECRET: optional,
+
   FOUNDER_WAIT_MINUTES: z.coerce.number().int().min(1).default(30),
   MAX_REVISION_CYCLES: z.coerce.number().int().min(0).max(5).default(2),
 });

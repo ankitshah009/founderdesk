@@ -261,31 +261,37 @@ export async function deskRun(): Promise<void> {
 
 /* ── Customer sign-in (see src/lib/auth.ts for the security model) ────────── */
 
-export type SignInState = { error?: string; step?: "code"; email?: string } | null;
+export type SignInState = { error?: string; step?: "code"; email?: string; devCode?: string; name?: string; website?: string } | null;
 
 export async function requestSignIn(_: SignInState, form: FormData): Promise<SignInState> {
   const { AuthError, startChallenge } = await import("@/lib/auth");
   const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const name = String(form.get("name") ?? "").trim().slice(0, 120) || undefined;
+  const website = String(form.get("website") ?? "").trim().slice(0, 300) || undefined;
+  let res;
   try {
-    await startChallenge(email);
+    res = await startChallenge(email, { allowNew: true });
   } catch (err) {
-    if (err instanceof AuthError) return { error: err.message };
+    if (err instanceof AuthError) return { error: err.message, name, website, email };
     throw err;
   }
-  // Same answer whether or not the address has orders.
-  return { step: "code", email };
+  // Without AgentMail nothing is emailed, so in development show the code here (labelled as simulated).
+  const devCode = !isLive("agentmail") && env().NODE_ENV !== "production" ? res.code : undefined;
+  return { step: "code", email, name, website, ...(devCode ? { devCode } : {}) };
 }
 
 export async function verifySignInCode(_: SignInState, form: FormData): Promise<SignInState> {
   const { AuthError, consumeCode, createSession } = await import("@/lib/auth");
   const email = String(form.get("email") ?? "");
   try {
-    await createSession(await consumeCode(email, String(form.get("code") ?? "").replace(/\s/g, "")));
+    const verified = await consumeCode(email, String(form.get("code") ?? "").replace(/\s/g, ""));
+    await createSession(verified);
+    await saveSignupDetails(verified, String(form.get("name") ?? ""), String(form.get("website") ?? ""));
   } catch (err) {
     if (err instanceof AuthError) return { error: err.message, step: "code", email };
     throw err;
   }
-  redirect("/account");
+  redirect(String(form.get("next") ?? "").startsWith("/studio") ? String(form.get("next")) : "/account");
 }
 
 export async function confirmSignInLink(form: FormData) {
@@ -370,4 +376,64 @@ export async function scheduleAction(form: FormData): Promise<void> {
     await cancelSchedule(jobId);
   }
   refresh();
+}
+
+/* ── Studio ───────────────────────────────────────────────────────────────── */
+
+/** One-click demo workspace (development, or DEMO_WORKSPACE=true): sign in as the demo founder. */
+export async function startDemoWorkspace(): Promise<void> {
+  const { DEMO_EMAIL, demoEnabled } = await import("@/lib/studio/session");
+  if (!demoEnabled()) throw new Error("The demo workspace is not enabled on this deployment.");
+  const { createSession } = await import("@/lib/auth");
+  const { seedDemo } = await import("@/lib/studio/demo");
+  await seedDemo(DEMO_EMAIL);
+  await createSession(DEMO_EMAIL);
+  kick();
+  redirect("/studio");
+}
+
+/** Highlight-and-ask from the review page: rewrite one passage, then re-review. */
+export async function askEditor(_: ActionState, form: FormData): Promise<ActionState> {
+  const jobId = verifyLink(String(form.get("t") ?? ""), "review");
+  if (!jobId) return { error: "This review link is invalid or has expired." };
+  const { requestSelectionEdit } = await import("@/lib/workflow/revise");
+  try {
+    await requestSelectionEdit({ jobId, draftId: String(form.get("draftId")), selection: String(form.get("selection") ?? ""), instruction: String(form.get("instruction") ?? "") });
+  } catch (err) {
+    if (err instanceof GateError) return { error: err.message };
+    throw err;
+  }
+  kick();
+  refresh();
+  return { ok: "On it. The editor is rewriting that passage; the new version goes back through fact-check, then this page updates." };
+}
+
+/** Sign-up details go straight into the new Studio profile (the website is read during onboarding). */
+async function saveSignupDetails(email: string, name: string, website: string) {
+  name = name.trim().slice(0, 120);
+  website = website.trim().slice(0, 300);
+  if (!name && !website) return;
+  const { getProfile, updateProfile } = await import("@/lib/studio/store");
+  const { mergeBrand } = await import("@/lib/studio/brand");
+  const profile = await getProfile(email);
+  const url = website && !/^https?:\/\//i.test(website) ? `https://${website}` : website;
+  await updateProfile(email, {
+    ...(name && !profile.displayName ? { displayName: name } : {}),
+    ...(url && !profile.brand?.website
+      ? { brand: mergeBrand(profile.brand, { name: null, tagline: null, description: null, website: url, logoUrl: null, colors: [], audience: null, products: [], keywords: [] }, "sign-up form") }
+      : {}),
+  });
+}
+
+/** Development-only: the simulated Google account chooser (never in production). */
+export async function simulatedGoogleSignIn(form: FormData): Promise<void> {
+  const { googleSimulated, safeNext } = await import("@/lib/auth-google");
+  if (!googleSimulated()) throw new Error("Simulated Google sign-in is not available.");
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email.");
+  const { audit, createSession } = await import("@/lib/auth");
+  await createSession(email);
+  await audit("signin.google_simulated", email);
+  await saveSignupDetails(email, String(form.get("name") ?? ""), "");
+  redirect(safeNext(String(form.get("next") ?? "")));
 }

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { jobs, outboundMessages, type Job, type OutboundMessage } from "@/lib/db/schema";
+import { jobs, outboundMessages, type Job, type OutboundMessage, type QualityScores } from "@/lib/db/schema";
 import { env, isLive } from "@/lib/env";
 import { replyToMessage, sendMessage } from "@/lib/integrations/agentmail";
 import { links } from "@/lib/links";
@@ -70,10 +70,29 @@ export const templates = {
       text: `${hello(job)}\n\nThanks — we saved your reply. We still need an answer to this before the article can move on:\n\n${questions.map((q) => `• ${q}`).join("\n")}\n\n— FounderDesk`,
     };
   },
-  review_link(job: Job) {
+  review_link(job: Job, extra: { scores?: QualityScores | null; notes?: string[]; corrections?: string[] } = {}) {
+    const attention = [
+      ...(extra.corrections ?? []).slice(0, 3).map((c) => `• Correction: ${c}`),
+      ...(extra.notes ?? []).slice(0, 3).map((n) => `• Reviewer note: ${n}`),
+      ...(extra.scores?.suggestions ?? []).slice(0, 2).map((s) => `• To raise the score: ${s}`),
+    ];
     return {
-      subject: subjectFor(job),
-      text: `${hello(job)}\n\nYour article is ready for review. The page shows the finished article, the corrections we made, and the source beside each claim:\n\n${links.review(job.id)}\n\nNothing goes live until you press Approve. You can also edit the text there; edits go back through review.\n\nWant images with it? Add 10 image credits for $5 from the same page.\n\n— FounderDesk`,
+      subject: `Ready for your approval: ${job.topic}`.slice(0, 120),
+      text: [
+        hello(job),
+        "",
+        "Your article is ready for review. The page shows the finished article, the corrections we made, and the source beside each claim:",
+        "",
+        links.review(job.id),
+        "",
+        ...(extra.scores ? [`Quality score: ${extra.scores.overall}/100 (accuracy ${extra.scores.accuracy}, sources ${extra.scores.sources}, readability ${extra.scores.readability}${extra.scores.voice != null ? `, voice match ${extra.scores.voice}` : ""}).`, ""] : []),
+        ...(attention.length ? ["What needs your attention:", ...attention, ""] : ["Nothing needs your attention beyond reading it through.", ""]),
+        "Nothing goes live until you press Approve. Highlight any passage on that page to ask for a change, or edit the text directly; changes go back through review.",
+        "",
+        "Want images with it? Add 10 image credits for $5 from the same page.",
+        "",
+        "— FounderDesk",
+      ].join("\n"),
     };
   },
   published(job: Job, url: string) {

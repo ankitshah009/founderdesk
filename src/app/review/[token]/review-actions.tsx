@@ -12,7 +12,7 @@ type Props = {
   draftId: string;
   contentHash: string;
   destination: string;
-  social: Array<{ id: string; label: string }>;
+  social: Array<{ id: string; label: string; simulated?: boolean; autoPost?: boolean }>;
   readyImages?: Array<{ id: string; slot: string; preselected: boolean }>;
   draft: { title: string; dek: string; bodyMarkdown: string; announcement: string };
 };
@@ -25,7 +25,10 @@ function localInputValue(d: Date): string {
 export function ApprovePanel({ token, draftId, contentHash, destination, social, readyImages = [] }: Omit<Props, "draft">) {
   const [state, action, pending] = useActionState<ActionState, FormData>(approveArticle, null);
   const [when, setWhen] = useState<"now" | "later">("now");
-  const [ticked, setTicked] = useState<string[]>([]);
+  // Auto-post accounts start ticked; Instagram only when an image is ticked too.
+  const [ticked, setTicked] = useState<string[]>(() =>
+    social.filter((s) => Boolean(s.autoPost) && (s.id !== "instagram" || readyImages.some((i) => i.preselected))).map((s) => s.id),
+  );
   const [times, setTimes] = useState<Record<string, string>>({});
   const [bounds] = useState(() => {
     const now = new Date();
@@ -78,7 +81,10 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
           <div key={s.id}>
             <label className="flex items-center gap-2.5 text-fg-2">
               <input type="checkbox" name="destinations" value={s.id} checked={ticked.includes(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} className="accent-white" />
-              Announce on {s.label}
+              <span>
+                {s.label}
+                {s.simulated ? <span className="ml-1.5 rounded border border-line px-1 py-px text-[10px] tracking-wide text-subtle uppercase">simulated</span> : null}
+              </span>
             </label>
             {s.id === "x" ? (
               <div className="mt-2 ml-6 flex gap-4 text-xs text-fg-2" role="radiogroup" aria-label="X format">

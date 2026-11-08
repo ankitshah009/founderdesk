@@ -236,3 +236,201 @@ body {
 .composer-input:focus-visible {
   outline: none;
 }
+
+/* ── Landing v2 ── */
+/*
+ * Motion for the marketing page. Everything is visible by default; the
+ * RevealObserver only arms elements that start below the fold, so no-JS
+ * readers and snapshots see the finished state. Only transform, opacity,
+ * clip-path and background-size are animated.
+ */
+:root {
+  --lv-ease: cubic-bezier(0.22, 0.7, 0.2, 1);
+}
+
+[data-reveal="armed"] {
+  opacity: 0;
+  transform: translateY(18px);
+}
+[data-reveal="in"] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.7s var(--lv-ease),
+    transform 0.7s var(--lv-ease);
+  transition-delay: var(--d, 0ms);
+}
+
+/* One-shot animations. They play on load, when a parent is revealed, or when a tutorial panel becomes active. */
+.lv-rise { animation: lv-rise 0.6s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-fade { animation: lv-fade 0.5s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-pop { animation: lv-pop 0.45s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-grow-x { transform-origin: left center; animation: lv-grow-x 1.1s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-grow-y { transform-origin: center bottom; animation: lv-grow-y 1s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-ring { animation: lv-ring 1.4s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-out { animation: lv-out 0.3s var(--lv-ease) both; animation-delay: var(--d, 0ms); }
+.lv-type {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  width: calc(var(--n, 24) * 1ch);
+  max-width: 100%;
+  animation: lv-type var(--t, 1.2s) steps(var(--n, 24)) both;
+  animation-delay: var(--d, 0ms);
+}
+.lv-mark {
+  background-image: linear-gradient(rgb(255 90 31 / 0.28), rgb(255 90 31 / 0.28));
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation: lv-mark 0.9s var(--lv-ease) both;
+  animation-delay: var(--d, 0ms);
+  border-radius: 2px;
+}
+.lv-strike { position: relative; }
+.lv-strike::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 55%;
+  height: 1.5px;
+  background: currentColor;
+  transform-origin: left center;
+  animation: lv-grow-x 0.45s var(--lv-ease) both;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Gates: hold one-shot animations until the parent is revealed or the panel is active. */
+:is([data-reveal="armed"], .lv-gate) :is(.lv-rise, .lv-fade, .lv-pop, .lv-grow-x, .lv-grow-y, .lv-ring, .lv-out, .lv-type, .lv-mark),
+:is([data-reveal="armed"], .lv-gate) .lv-strike::after {
+  animation: none;
+}
+
+@keyframes lv-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes lv-fade { from { opacity: 0; } }
+@keyframes lv-pop { from { opacity: 0; transform: scale(0.92); } }
+@keyframes lv-grow-x { from { transform: scaleX(0); } }
+@keyframes lv-grow-y { from { transform: scaleY(0); } }
+@keyframes lv-ring { from { stroke-dashoffset: var(--c); } }
+@keyframes lv-out { to { opacity: 0; } }
+@keyframes lv-type { from { width: 0; } }
+@keyframes lv-mark { from { background-size: 0% 100%; } }
+
+/* Continuous loops. */
+.lv-marquee { animation: lv-marquee 48s linear infinite; }
+.lv-marquee-wrap:hover .lv-marquee { animation-play-state: paused; }
+@keyframes lv-marquee { to { transform: translateX(-50%); } }
+
+.lv-eq { transform-origin: center bottom; animation: lv-eq 2.4s ease-in-out infinite; animation-delay: var(--d, 0ms); }
+@keyframes lv-eq { 50% { transform: scaleY(0.55); } }
+
+.lv-caret { animation: lv-caret 1s steps(1) infinite; }
+@keyframes lv-caret { 50% { opacity: 0; } }
+
+.lv-live { position: relative; }
+.lv-live::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 1px solid var(--accent);
+  opacity: 0;
+  animation: lv-ping 1.8s var(--lv-ease) infinite;
+}
+@keyframes lv-ping { 0% { opacity: 0.7; transform: scale(0.9); } 100% { opacity: 0; transform: scale(1.35); } }
+
+.lv-track { container-type: inline-size; }
+.lv-travel { animation: lv-travel 2.6s var(--lv-ease) infinite; animation-delay: var(--d, 0ms); }
+@keyframes lv-travel {
+  0% { transform: translateX(0); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateX(calc(100cqw - 6px)); opacity: 0; }
+}
+
+.lv-glow-cite { animation: lv-glow-cite 2.6s var(--lv-ease) infinite; animation-delay: var(--d, 0ms); }
+@keyframes lv-glow-cite { 0%, 70% { background: rgb(255 255 255 / 0.06); color: var(--fg-2); } 85% { background: var(--accent-tint); color: var(--accent-ink); } 100% { background: rgb(255 255 255 / 0.06); color: var(--fg-2); } }
+
+/* Style guide: a banned word is struck and replaced, on a loop. */
+.lv-swap-old, .lv-swap-new { display: inline-block; }
+.lv-swap-old { position: relative; animation: lv-swap-old 5s var(--lv-ease) infinite; }
+.lv-swap-old::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 55%;
+  height: 1.5px;
+  background: var(--red);
+  transform-origin: left center;
+  animation: lv-swap-strike 5s var(--lv-ease) infinite;
+}
+.lv-swap-new { animation: lv-swap-new 5s var(--lv-ease) infinite; }
+@keyframes lv-swap-strike { 0%, 20% { transform: scaleX(0); } 32%, 92% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
+@keyframes lv-swap-old { 0%, 30% { color: var(--fg-2); } 40%, 92% { color: var(--subtle); } 100% { color: var(--fg-2); } }
+@keyframes lv-swap-new { 0%, 38% { opacity: 0; transform: translateY(4px); } 48%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+/* Instagram carousel preview slides sideways on a loop. */
+.lv-slides { animation: lv-slides 9s var(--lv-ease) infinite; }
+@keyframes lv-slides { 0%, 28% { transform: translateX(0); } 36%, 62% { transform: translateX(-120px); } 70%, 94% { transform: translateX(-240px); } 100% { transform: translateX(0); } }
+
+/* Tutorial: stacked panels reserve the height of the tallest one, so switching never shifts layout. */
+.lv-stack { display: grid; grid-template-columns: minmax(0, 1fr); }
+.lv-stack > * { grid-area: 1 / 1; min-width: 0; }
+.lv-panel { visibility: hidden; opacity: 0; transform: translateY(6px); transition: opacity 0.35s var(--lv-ease), transform 0.35s var(--lv-ease), visibility 0s linear 0.35s; }
+.lv-panel.is-active { visibility: visible; opacity: 1; transform: none; transition: opacity 0.45s var(--lv-ease), transform 0.45s var(--lv-ease), visibility 0s; }
+.lv-progress { transform-origin: left center; animation: lv-grow-x var(--dur, 6s) linear both; }
+.lv-progress-y { transform-origin: center top; animation: lv-grow-y var(--dur, 6s) linear both; }
+
+.lv-rail { scrollbar-width: none; }
+.lv-rail::-webkit-scrollbar { display: none; }
+
+@media (max-width: 1023.98px) {
+  .lv-fade-edges { mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent); }
+}
+
+/* FAQ disclosure. */
+.lv-faq summary { list-style: none; }
+.lv-faq summary::-webkit-details-marker { display: none; }
+.lv-faq .lv-faq-icon { transition: transform 0.3s var(--lv-ease); }
+.lv-faq[open] .lv-faq-icon { transform: rotate(45deg); }
+.lv-faq[open] .lv-faq-body { animation: lv-rise 0.4s var(--lv-ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] { opacity: 1 !important; transform: none !important; transition: none !important; }
+  [class*="lv-"], [class*="lv-"]::before, [class*="lv-"]::after { animation: none !important; transition: none !important; }
+  .lv-swap-new { opacity: 1; }
+}
+
+.lv-sweep { animation: lv-sweep 4.5s linear infinite; }
+@keyframes lv-sweep { to { transform: rotate(360deg); } }
+
+.lv-marquee-wrap:focus-within .lv-marquee { animation-play-state: paused; }
+.lv-marquee-slow { animation-duration: 80s; }
+@media (prefers-reduced-motion: reduce) {
+  .lv-marquee { width: 100% !important; transform: none !important; }
+  .lv-marquee > [data-copy] { display: none; }
+  .lv-marquee > :first-child { flex-wrap: wrap; width: 100%; }
+}
+.lv-fade-x { mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent); }
+.lv-balance h2 { text-wrap: balance; }
+
+/* Rotating value proposition (hero): underlined words with a timer fill. */
+.rot-slot { padding-bottom: 0.06em; }
+.rot-word { animation: rot-in 0.5s var(--lv-ease, cubic-bezier(0.2, 0.8, 0.2, 1)) both; }
+.rot-track {
+  position: absolute; left: 0; right: 0; bottom: -0.02em; height: 0.075em; min-height: 3px;
+  border-radius: 999px; overflow: hidden; background: rgb(255 255 255 / 0.18);
+}
+.rot-slot[data-tone="accent"] .rot-track { background: rgb(255 107 61 / 0.28); }
+.rot-fill {
+  display: block; height: 100%; width: 100%; border-radius: inherit; transform-origin: left center;
+  background: currentColor; animation: rot-fill linear both;
+}
+@keyframes rot-in { from { opacity: 0; transform: translateY(0.35em); filter: blur(4px); } }
+@keyframes rot-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .rot-word { animation: none; }
+  .rot-fill { animation: none; transform: none; }
+}

@@ -45,6 +45,8 @@ function describe(d: Dispatch, sources: Map<string, Source>): { label: string; d
       return { label: "Checking the article on a real phone" };
     case "image":
       return { label: i.slot === "hero" ? "Generating the header image" : `Generating an image for “${String(i.slot)}”` };
+    case "revise_selection":
+      return { label: `Editor applying your request: “${String(i.instruction ?? "").slice(0, 60)}”` };
   }
 }
 
