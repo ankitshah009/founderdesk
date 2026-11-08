@@ -203,21 +203,51 @@ function Statement() {
 
 const STEPS = [
   { n: "01", tile: "tile-1", title: "Send the idea", body: "Notes, a pilot report, a few links. Email them or paste them in. Rough is fine." },
-  { n: "02", tile: "tile-2", title: "It researches and checks", body: "Sources are fetched and every number is held to its passage. When only you know the answer, it asks you by email." },
+  { n: "02", tile: "tile-2", title: "It researches and checks", body: "Every number is held to its source passage. When only you know the answer, it asks you by email." },
   { n: "03", tile: "tile-3", title: "You approve, it ships", body: "Read the exact text with sources beside each claim. Approve it and it's published, verified live, and checked on a phone." },
 ];
+
+function StepVisual({ n }: { n: string }) {
+  const card = "w-full max-w-[300px] rounded-2xl border border-white/15 bg-[#120d0b]/85 p-4 text-left shadow-[0_20px_50px_-15px_rgba(0,0,0,0.8)] backdrop-blur";
+  if (n === "01")
+    return (
+      <div className={card}>
+        <p className="text-[11px] text-fg-2/60">dana@northwind.dev → desk@</p>
+        <p className="mt-2 text-sm leading-snug text-fg">Why founders should start with narrow support workflows. Notes + pilot report attached.</p>
+        <p className="mt-3 inline-block rounded-md bg-white/10 px-2 py-1 text-[11px] text-fg-2">pilot-report.pdf</p>
+      </div>
+    );
+  if (n === "02")
+    return (
+      <div className={card}>
+        <p className="text-[11px] font-semibold text-amber">Figure mismatch · asked the founder</p>
+        <p className="mt-2 text-sm text-fg">
+          Response time <span className="text-fg-2/50 line-through">80%</span> <span className="font-semibold text-accent-ink">60%</span>
+        </p>
+        <p className="mt-2 border-l-2 border-white/20 pl-2 text-[11px] leading-snug text-fg-2/70">Pilot report S1: “improved by 60%”</p>
+      </div>
+    );
+  return (
+    <div className={card}>
+      <p className="text-[11px] font-semibold text-green">● Approved · published · verified</p>
+      <p className="mt-2 text-sm text-fg">founderdesk.app/a/why-narrow…</p>
+      <p className="mt-2 text-[11px] text-fg-2/70">Phone check: headline visible, sources linked</p>
+    </div>
+  );
+}
 
 function Steps() {
   return (
     <section id="how" className="scroll-mt-16 bg-bg">
-      <div className="mx-auto grid max-w-[1240px] gap-8 px-4 pb-28 md:grid-cols-3 md:gap-6 md:px-8">
+      <div className="mx-auto grid max-w-[1240px] gap-10 px-4 pb-28 md:grid-cols-3 md:gap-6 md:px-8">
         {STEPS.map((s) => (
           <div key={s.n}>
-            <div className={cn(s.tile, "flex aspect-[5/4] items-end rounded-3xl p-7")}>
-              <span className="font-[family-name:var(--font-display)] text-7xl font-semibold tracking-[-0.06em] text-fg md:text-8xl">{s.n}</span>
+            <div className={cn(s.tile, "flex aspect-[5/4] items-center justify-center rounded-3xl p-6")}>
+              <StepVisual n={s.n} />
             </div>
-            <h3 className="mt-6 text-2xl font-semibold tracking-[-0.035em] text-fg md:text-3xl">{s.title}</h3>
-            <p className="mt-3 text-base leading-relaxed text-muted">{s.body}</p>
+            <p className="mt-6 text-xs font-semibold tracking-[0.14em] text-accent-ink">STEP {s.n}</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-fg md:text-[1.75rem]">{s.title}</h3>
+            <p className="mt-3 text-base leading-relaxed text-fg-2/85 md:text-[1.0625rem]">{s.body}</p>
           </div>
         ))}
       </div>
@@ -225,13 +255,13 @@ function Steps() {
   );
 }
 
-type Channel = { tag: string; title: string; body: string; status: string; tone: "live" | "connect" | "planned"; style: string };
+type Channel = { tag: string; title: string; body: string; status: string; tone: "live" | "connect" | "planned"; style: string; span?: string };
 const CHANNELS: Channel[] = [
-  { tag: "WEB ARTICLE", title: "A full article, with the receipts", body: "Long-form, in your voice, with a source beside every claim — published and verified live.", status: "Live", tone: "live", style: "bg-[linear-gradient(135deg,#ff5a1f,#ff8a3c)] text-[#140a05]" },
-  { tag: "X", title: "A post with a real hook", body: "One idea, a strong first line, and a link back to the full article. Approved separately.", status: "Connect your account", tone: "connect", style: "bg-[linear-gradient(160deg,#2a1714,#160f0d)] text-fg" },
-  { tag: "LINKEDIN", title: "Posts that sound like you", body: "The same argument for a professional feed, read back by ID before we call it published.", status: "Connect your account", tone: "connect", style: "bg-[linear-gradient(135deg,#c81f30,#e0362d)] text-fg" },
-  { tag: "NEWSLETTER", title: "An issue ready to send", body: "A subject line and a tight issue that points readers to the full piece.", status: "Planned", tone: "planned", style: "bg-panel text-fg" },
-  { tag: "INSTAGRAM", title: "Carousels and captions", body: "Slide-by-slide copy from the approved article.", status: "Planned", tone: "planned", style: "bg-[linear-gradient(160deg,#4a1a0e,#2a120c)] text-fg" },
+  { tag: "WEB ARTICLE", title: "A full article, with the receipts", body: "Long-form, in your voice, with a source beside every claim — published, fetched back, and checked on a phone.", status: "Live", tone: "live", style: "bg-[linear-gradient(135deg,#ff5a1f,#ff8a3c)] text-[#140a05]", span: "md:col-span-2" },
+  { tag: "X", title: "A post with a real hook", body: "One idea, a strong first line, and a link back to the article. Approved separately.", status: "Connect account", tone: "connect", style: "bg-[linear-gradient(160deg,#2a1714,#160f0d)] text-fg" },
+  { tag: "LINKEDIN", title: "Posts that sound like you", body: "The same argument for a professional feed, read back by ID before we call it published.", status: "Connect account", tone: "connect", style: "bg-[linear-gradient(135deg,#c81f30,#e0362d)] text-fg" },
+  { tag: "NEWSLETTER", title: "An issue ready to send", body: "A subject line and a tight issue pointing to the full piece.", status: "Coming soon", tone: "planned", style: "bg-panel text-fg" },
+  { tag: "INSTAGRAM", title: "Carousels and captions", body: "Slide-by-slide copy from the approved article.", status: "Coming soon", tone: "planned", style: "bg-[linear-gradient(160deg,#3a170d,#21110c)] text-fg" },
 ];
 
 function Channels() {
@@ -241,17 +271,24 @@ function Channels() {
         <h2 className="display-md text-fg">
           One idea. <span className="serif-accent">Every</span> channel.
         </h2>
-        <p className="mt-5 max-w-xl text-lg text-muted">Each destination is approved on its own, and nothing is called published until we&apos;ve read it back.</p>
+        <p className="mt-5 max-w-xl text-lg text-fg-2/80">Each destination is approved on its own, and nothing is called published until we&apos;ve read it back.</p>
         <ul className="mt-14 grid gap-5 md:grid-cols-3">
           {CHANNELS.map((c) => (
-            <li key={c.tag} className={cn("flex min-h-[360px] flex-col justify-between rounded-3xl p-8", c.style)}>
+            <li key={c.tag} className={cn("flex flex-col justify-between rounded-3xl p-8", c.tone === "planned" ? "min-h-[260px]" : "min-h-[340px]", c.span, c.style)}>
               <div className="flex items-start justify-between gap-3">
                 <span className="bg-white px-3 py-1.5 text-xs font-bold tracking-[0.08em] text-black">{c.tag}</span>
-                <span className={cn("text-xs font-semibold", c.tone === "live" ? "text-[#140a05]" : c.tone === "connect" ? "text-fg-2" : "text-fg-2/60")}>{c.status}</span>
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                    c.tone === "live" ? "bg-[#140a05]/15 text-[#140a05]" : c.tone === "connect" ? "bg-white/12 text-fg" : "border border-white/20 text-fg-2/70",
+                  )}
+                >
+                  {c.status}
+                </span>
               </div>
-              <div>
-                <h3 className="text-[1.75rem] leading-[1.08] font-semibold tracking-[-0.04em] md:text-3xl">{c.title}</h3>
-                <p className={cn("mt-4 text-base leading-relaxed", c.tone === "live" ? "text-[#140a05]/80" : "text-fg-2/85")}>{c.body}</p>
+              <div className={c.span ? "max-w-lg" : ""}>
+                <h3 className={cn("leading-[1.05] font-semibold tracking-[-0.04em]", c.span ? "text-4xl md:text-5xl" : "text-[1.75rem] md:text-3xl", c.tone === "planned" && "text-fg/80")}>{c.title}</h3>
+                <p className={cn("mt-4 text-base leading-relaxed", c.tone === "live" ? "text-[#140a05]/80" : "text-fg-2/80")}>{c.body}</p>
               </div>
             </li>
           ))}
