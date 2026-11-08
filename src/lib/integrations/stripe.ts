@@ -23,8 +23,6 @@ export async function createCheckoutSession(args: {
   return stripe().checkout.sessions.create(
     {
       mode: "payment",
-      // Only cards are activated on the account; other methods render in test mode but decline.
-      payment_method_types: ["card"],
       customer_email: args.founderEmail,
       client_reference_id: args.jobId,
       metadata: { job_id: args.jobId },
