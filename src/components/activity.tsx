@@ -1,6 +1,7 @@
 import { nowMs } from "@/lib/clock";
 import { Check, Clock, Loader2, X } from "lucide-react";
 import type { Dispatch, Job, Source } from "@/lib/db/schema";
+import { LocalTime } from "./local-time";
 import { cn } from "./ui";
 
 /**
@@ -45,7 +46,6 @@ function describe(d: Dispatch, sources: Map<string, Source>): { label: string; d
 }
 
 const fmtDur = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`);
-const fmtTime = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
 export function ActivityFeed({ job, dispatches, sources, waitMinutes }: { job: Job; dispatches: Dispatch[]; sources: Source[]; waitMinutes: number }) {
   const now = nowMs();
@@ -73,7 +73,7 @@ export function ActivityFeed({ job, dispatches, sources, waitMinutes }: { job: J
   }
   if (job.stage === "WAITING_FOR_FOUNDER") {
     const resumeAt = new Date(job.updatedAt.getTime() + waitMinutes * 60_000);
-    items.push({ key: "waiting", at: job.updatedAt, label: "Waiting for your answer", detail: `Reply to our email — or we continue automatically at ${fmtTime(resumeAt)}`, state: "waiting" });
+    items.push({ key: "waiting", at: job.updatedAt, label: "Waiting for your answer", detail: `Reply to our email — or we continue automatically in about ${Math.max(1, Math.round((resumeAt.getTime() - now) / 60_000))} min`, state: "waiting" });
   }
   if (job.stage === "READY_FOR_APPROVAL") items.push({ key: "approve", at: job.updatedAt, label: "Ready for your approval", state: "waiting" });
 
@@ -100,7 +100,7 @@ export function ActivityFeed({ job, dispatches, sources, waitMinutes }: { job: J
             <p className={cn("text-sm", it.state === "queued" ? "text-muted" : "text-fg")}>{it.label}</p>
             {it.detail ? <p className="mt-0.5 text-xs text-muted">{it.detail}</p> : null}
           </div>
-          <span className="shrink-0 text-xs text-subtle tabular-nums">{fmtTime(it.at)}</span>
+          <span className="shrink-0 text-xs text-subtle tabular-nums"><LocalTime iso={it.at.toISOString()} /></span>
         </li>
       ))}
     </ol>
