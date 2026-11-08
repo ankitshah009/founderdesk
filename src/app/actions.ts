@@ -275,13 +275,32 @@ export async function deskRun(): Promise<void> {
 
 /* ── Customer sign-in (see src/lib/auth.ts for the security model) ────────── */
 
-export type SignInState = { error?: string; step?: "code"; email?: string; devCode?: string; name?: string; website?: string } | null;
+export type SignInState = { error?: string; step?: "code"; email?: string; devCode?: string; name?: string; website?: string; via?: "workos" | "local" } | null;
+
+async function requestMeta(): Promise<{ ip?: string; userAgent?: string }> {
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  return { ip: h.get("x-forwarded-for")?.split(",")[0]?.trim() || undefined, userAgent: h.get("user-agent") ?? undefined };
+}
 
 export async function requestSignIn(_: SignInState, form: FormData): Promise<SignInState> {
   const { AuthError, startChallenge } = await import("@/lib/auth");
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const name = String(form.get("name") ?? "").trim().slice(0, 120) || undefined;
   const website = String(form.get("website") ?? "").trim().slice(0, 300) || undefined;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Enter a valid email address.", name, website, email };
+  // WorkOS sends and checks the code when it's configured; our own email code is the fallback.
+  const { workosEnabled } = await import("@/lib/workos");
+  if (workosEnabled()) {
+    const { WorkOSSignInError, sendEmailCode } = await import("@/lib/workos-headless");
+    try {
+      await sendEmailCode(email, await requestMeta());
+      return { step: "code", email, name, website, via: "workos" };
+    } catch (err) {
+      if (err instanceof WorkOSSignInError && /Too many/.test(err.message)) return { error: err.message, name, website, email };
+      // Otherwise (e.g. Magic Auth switched off in WorkOS) fall through to our own code.
+    }
+  }
   let res;
   try {
     res = await startChallenge(email, { allowNew: true, next: String(form.get("next") ?? "") || null, meta: { name, website } });
@@ -291,19 +310,35 @@ export async function requestSignIn(_: SignInState, form: FormData): Promise<Sig
   }
   // Without AgentMail nothing is emailed, so in development show the code here (labelled as simulated).
   const devCode = !isLive("agentmail") && env().NODE_ENV !== "production" ? res.code : undefined;
-  return { step: "code", email, name, website, ...(devCode ? { devCode } : {}) };
+  return { step: "code", email, name, website, via: "local", ...(devCode ? { devCode } : {}) };
 }
 
 export async function verifySignInCode(_: SignInState, form: FormData): Promise<SignInState> {
-  const { AuthError, consumeCode, createSession } = await import("@/lib/auth");
-  const email = String(form.get("email") ?? "");
+  const { AuthError, audit, consumeCode, createSession } = await import("@/lib/auth");
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const code = String(form.get("code") ?? "").replace(/\s/g, "");
+  const via = form.get("via") === "workos" ? "workos" : "local";
   let verified: string;
   try {
-    verified = await consumeCode(email, String(form.get("code") ?? "").replace(/\s/g, ""));
-    await createSession(verified);
-    await saveSignupDetails(verified, String(form.get("name") ?? ""), String(form.get("website") ?? ""));
+    if (via === "workos") {
+      const { WorkOSSignInError, verifyEmailCode } = await import("@/lib/workos-headless");
+      try {
+        const who = await verifyEmailCode(email, code, await requestMeta());
+        verified = who.email;
+        await createSession(verified);
+        await audit("signin.workos_code", verified);
+        await saveSignupDetails(verified, String(form.get("name") ?? "") || who.name, String(form.get("website") ?? ""));
+      } catch (err) {
+        if (err instanceof WorkOSSignInError) return { error: err.message, step: "code", email, via };
+        throw err;
+      }
+    } else {
+      verified = await consumeCode(email, code);
+      await createSession(verified);
+      await saveSignupDetails(verified, String(form.get("name") ?? ""), String(form.get("website") ?? ""));
+    }
   } catch (err) {
-    if (err instanceof AuthError) return { error: err.message, step: "code", email };
+    if (err instanceof AuthError) return { error: err.message, step: "code", email, via };
     throw err;
   }
   const { landingAfterSignIn } = await import("@/lib/studio/gate");

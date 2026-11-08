@@ -66,18 +66,25 @@ export function SignInForm({ next, mode = "signin", google = false, workos = fal
       <div className="space-y-4">
         {workos ? (
           <>
-            {/* Plain <a> so the /sign-in route runs and sets its PKCE cookie. */}
             <a
-              href={`/sign-in?next=${encodeURIComponent(next ?? "/studio")}${mode === "signup" ? "&mode=signup" : ""}`}
-              className="flex w-full items-center justify-center rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-[#140a05] hover:bg-[#ff6f3a]"
+              href={`/sign-in?provider=google&next=${encodeURIComponent(next ?? "/studio")}`}
+              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-line-strong bg-white px-4 py-2.5 text-sm font-medium text-black hover:bg-white/90"
             >
-              {mode === "signup" ? "Create your account" : "Continue to sign in"}
+              <svg viewBox="0 0 24 24" className="size-4" aria-hidden>
+                <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.9-5.5 3.9-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.3 14.6 2.3 12 2.3 6.7 2.3 2.4 6.6 2.4 12s4.3 9.7 9.6 9.7c5.5 0 9.2-3.9 9.2-9.4 0-.6-.1-1.1-.2-1.6H12z" />
+              </svg>
+              Continue with Google
             </a>
-            <p className="text-center text-xs text-muted">Email, Google or your company&apos;s SSO.</p>
-            <details className="group rounded-lg border border-line px-4 py-3 text-sm">
-              <summary className="cursor-pointer list-none text-fg-2 group-open:mb-3">Or get a one-time code by email</summary>
-              <EmailStep state={state} action={request} pending={requesting} mode={mode} next={next} />
-            </details>
+            <div className="flex items-center gap-3 text-xs text-subtle">
+              <span className="h-px flex-1 bg-line" /> or with your email <span className="h-px flex-1 bg-line" />
+            </div>
+            <EmailStep state={state} action={request} pending={requesting} mode={mode} next={next} />
+            <p className="text-center text-xs text-subtle">
+              Signing in with your company&apos;s SSO?{" "}
+              <a href={`/sign-in?next=${encodeURIComponent(next ?? "/studio")}${mode === "signup" ? "&mode=signup" : ""}`} className="text-fg-2 underline underline-offset-2 hover:text-fg">
+                Continue here
+              </a>
+            </p>
           </>
         ) : (
           <>
@@ -88,13 +95,21 @@ export function SignInForm({ next, mode = "signin", google = false, workos = fal
       </div>
     );
   const domain = state.email?.split("@")[1] ?? "";
-  const webmail = /gmail|googlemail/.test(domain) ? ["Open Gmail", "https://mail.google.com/mail/u/0/#search/from%3Afounderdesk"] : /outlook|hotmail|live\./.test(domain) ? ["Open Outlook", "https://outlook.live.com/mail/"] : null;
+  const webmail = /gmail|googlemail/.test(domain) ? ["Open Gmail", "https://mail.google.com/mail/u/0/#search/newer_than%3A1h"] : /outlook|hotmail|live\./.test(domain) ? ["Open Outlook", "https://outlook.live.com/mail/"] : null;
   return (
     <div className="space-y-5">
       <div className="text-center">
         <p className="text-fg">Check your inbox</p>
         <p className="mt-1.5 text-sm text-muted">
-          We sent a sign-in link and a 6-digit code to <span className="text-fg-2">{state.email}</span>. Both expire in 10 minutes.
+          {state.via === "workos" ? (
+            <>
+              We sent a 6-digit code to <span className="text-fg-2">{state.email}</span>. Enter it below.
+            </>
+          ) : (
+            <>
+              We sent a sign-in link and a 6-digit code to <span className="text-fg-2">{state.email}</span>. Both expire in 10 minutes.
+            </>
+          )}
         </p>
       </div>
       {sent?.devCode ? (
@@ -109,11 +124,12 @@ export function SignInForm({ next, mode = "signin", google = false, workos = fal
       ) : null}
       <form action={verify} className="space-y-3">
         <input type="hidden" name="email" value={state.email} />
+        <input type="hidden" name="via" value={state.via ?? "local"} />
         {next ? <input type="hidden" name="next" value={next} /> : null}
         {sent?.name ? <input type="hidden" name="name" value={sent.name} /> : null}
         {sent?.website ? <input type="hidden" name="website" value={sent.website} /> : null}
         <label className="block">
-          <span className="mb-1.5 block text-sm text-fg-2">On another device? Enter the code</span>
+          <span className="mb-1.5 block text-sm text-fg-2">{state.via === "workos" ? "Your 6-digit code" : "On another device? Enter the code"}</span>
           <input
             name="code"
             inputMode="numeric"

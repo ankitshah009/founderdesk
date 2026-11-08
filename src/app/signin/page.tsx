@@ -49,7 +49,8 @@ async function Notice({ searchParams }: PageProps<"/signin">) {
     redirect(await landingAfterSignIn(session.email, typeof next === "string" ? next : "/studio"));
   }
   const sp = await searchParams;
-  if (sp.workos === "failed") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Sign-in didn&apos;t complete. Try again, or get a one-time code by email.</p>;
+  if (sp.workos === "cancelled") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Google sign-in was cancelled. Try again, or use your email below.</p>;
+  if (sp.workos === "failed") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Sign-in didn&apos;t complete. Try again, or use your email below.</p>;
   if (sp.google === "failed") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Google sign-in didn&apos;t complete. Try again, or use your email below.</p>;
   if (sp.google === "unavailable") return <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">Google sign-in isn&apos;t set up on this deployment yet. Use your email below.</p>;
   return sp.expired ? <p className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber">That link expired or was already used. Request a new one below.</p> : null;
