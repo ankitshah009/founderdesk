@@ -20,6 +20,8 @@ import { isFreeEligible, priorOrderFor } from "@/lib/workflow/intake";
 import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
 import { StartFreeCard } from "./start-card";
+import { PublishTracker, stillMoving, trackRows } from "@/components/publish-tracker";
+import { nowMs } from "@/lib/clock";
 import { isScheduled, upcoming } from "@/lib/workflow/publish";
 import { scheduleAction } from "@/app/actions";
 import { LocalTime } from "@/components/local-time";
@@ -76,13 +78,17 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   const freeEligible = job.paymentStatus === "unpaid" && (await isFreeEligible(job.founderEmail));
   const prior = job.paymentStatus === "unpaid" && !freeEligible ? await priorOrderFor(job.founderEmail, job.id) : null;
   const queued = ["PUBLISHING", "PUBLISHED", "COMPLETE"].includes(job.stage) ? await upcoming(job.id) : [];
+  const publishingStage = ["PUBLISHING", "PUBLISHED", "COMPLETE"].includes(job.stage);
+  const now = nowMs();
+  const track = publishingStage ? trackRows({ job, approvals: view.approvals, publications: view.publications, dispatches: view.dispatches, now }) : [];
+  const moving = track.length > 0 && stillMoving(track, now);
 
   return (
     <div className="frame px-4 py-14 md:px-12 md:py-16">
       <div className="flex flex-wrap items-center gap-3">
         <MonoLabel>Order {job.id.slice(0, 8).toUpperCase()}</MonoLabel>
         <StageChip stage={job.stage} scheduled={isScheduled(job)} />
-        <AutoRefresh tickUrl={tickUrl} active={(IN_PROGRESS.includes(job.stage) && !isScheduled(job)) || job.stage === "WAITING_FOR_FOUNDER" || job.stage === "AWAITING_PAYMENT"} />
+        <AutoRefresh tickUrl={tickUrl} active={moving || (IN_PROGRESS.includes(job.stage) && !isScheduled(job)) || job.stage === "WAITING_FOR_FOUNDER" || job.stage === "AWAITING_PAYMENT"} />
       </div>
       <div className="mt-8 grid gap-10 md:grid-cols-[1fr_320px]">
         <div className="min-w-0">
@@ -98,6 +104,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
           ) : (
             <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} prior={prior} />
           )}
+          {track.length && !isScheduled(job) ? <PublishTracker rows={track} /> : null}
           {!isScheduled(job) && queued.length ? (
             <div className="mt-8">
               <ScheduledPanel token={token} items={queued} cancellable={false} />

@@ -40,7 +40,7 @@ function describe(d: Dispatch, sources: Map<string, Source>): { label: string; d
     case "review":
       return { label: "Checking every claim against its source" };
     case "publish":
-      return { label: i.destination === "web" ? "Publishing and verifying the live page" : `Posting to ${String(i.destination).toUpperCase()}` };
+      return { label: i.destination === "web" ? "Publishing and verifying the live page" : `Posting to ${({ x: "X", linkedin: "LinkedIn", instagram: "Instagram" } as Record<string, string>)[String(i.destination)] ?? String(i.destination)}` };
     case "mobile_check":
       return { label: "Checking the article on a real phone" };
     case "image":

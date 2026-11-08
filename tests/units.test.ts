@@ -238,3 +238,27 @@ describe("email rate limits", () => {
     expect(rateLimitRetryAt("ProviderError: agentmail HTTP 400: bad address", now)).toBeNull();
   });
 });
+
+describe("publish tracker", () => {
+  it("shows each destination's real state and keeps refreshing until posts are out", async () => {
+    const { trackRows, stillMoving } = await import("@/components/publish-tracker");
+    const now = Date.parse("2026-11-08T20:00:00Z");
+    const pub = (destination: string, status: string, extra: object = {}) => ({ destination, status, url: `https://x.test/${destination}`, externalId: null, verification: null, ...extra }) as never;
+    const disp = (destination: string, status: string, nextRunAt: number, provider: string | null = null) => ({ kind: "publish", input: { destination }, status, nextRunAt: new Date(nextRunAt), provider, error: status === "failed" ? "phone did not confirm" : null }) as never;
+    const rows = trackRows({
+      job: { destinations: ["web", "x", "linkedin", "instagram"] },
+      approvals: [{ destination: "instagram", scheduledAt: new Date(now + 3 * 3_600_000) }] as never,
+      publications: [pub("web", "published"), pub("x", "publishing", { externalId: "mobilerun:t1" })],
+      dispatches: [disp("x", "started", now, "mobilerun"), disp("linkedin", "failed", now)],
+      now,
+    });
+    expect(rows.map((r) => [r.destination, r.state])).toEqual([["web", "live"], ["x", "posting"], ["linkedin", "failed"], ["instagram", "scheduled"]]);
+    expect(rows[1]!.viaPhone).toBe(true);
+    expect(stillMoving(rows, now)).toBe(true);
+    const done = trackRows({ job: { destinations: ["web", "x"] }, approvals: [], publications: [pub("web", "published"), pub("x", "published")], dispatches: [], now });
+    expect(done.every((r) => r.state === "live")).toBe(true);
+    expect(stillMoving(done, now)).toBe(false);
+    const before = trackRows({ job: { destinations: ["web", "x"] }, approvals: [], publications: [], dispatches: [disp("web", "started", now)], now });
+    expect(before.map((r) => r.state)).toEqual(["posting", "waiting"]);
+  });
+});
