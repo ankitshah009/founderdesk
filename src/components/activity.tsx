@@ -30,7 +30,8 @@ function describe(d: Dispatch, sources: Map<string, Source>): { label: string; d
       const s = sources.get(String(i.sourceId));
       const name = s?.title ?? host(s?.url ?? null) ?? "a source";
       const detail = s?.status === "empty" ? "No usable text — not cited" : s?.status === "failed" ? "Couldn't be read" : s?.content ? `${Math.round(s.content.length / 6).toLocaleString()} words` : undefined;
-      return { label: `Reading ${name}`, detail };
+      const media = /\.(mp3|m4a|wav|webm|ogg|flac|mp4|mpeg|mov)$/i.test(name);
+      return { label: media ? `Transcribing ${name}` : `Reading ${name}`, detail };
     }
     case "research_synthesis":
       return { label: "Pulling exact quotes from the sources" };

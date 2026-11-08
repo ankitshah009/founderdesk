@@ -49,6 +49,9 @@ const schema = z.object({
   RESEARCH_MAX_SEARCHES: z.coerce.number().int().min(0).max(20).default(8),
   RESEARCH_MAX_FETCHES: z.coerce.number().int().min(0).max(20).default(8),
 
+  OPENAI_API_KEY: optional,
+  OPENAI_TRANSCRIBE_MODEL: z.string().default("gpt-4o-transcribe"),
+
   MOBILERUN_API_KEY: optional,
   MOBILERUN_BASE_URL: z.string().url().default("https://api.mobilerun.ai/v1"),
   MOBILERUN_DEVICE_ID: optional,
@@ -84,7 +87,7 @@ export function appSecret(): string {
   return "founderdesk-dev-secret-do-not-use-in-production";
 }
 
-export type IntegrationName = "agentmail" | "stripe" | "neon" | "naive" | "monid" | "mobilerun" | "x" | "linkedin";
+export type IntegrationName = "agentmail" | "stripe" | "neon" | "naive" | "monid" | "openai" | "mobilerun" | "x" | "linkedin";
 
 export type IntegrationStatus = {
   name: IntegrationName;
@@ -142,6 +145,13 @@ export function integrationStatus(): IntegrationStatus[] {
       detail: monidLive
         ? `${e.MONID_SEARCH_PROVIDER ?? "?"}${e.MONID_SEARCH_ENDPOINT ?? ""} · ${e.MONID_FETCH_PROVIDER ?? "direct"}${e.MONID_FETCH_ENDPOINT ?? ""}`
         : "No web search; founder links fetched directly over HTTP",
+    },
+    {
+      name: "openai",
+      label: "OpenAI",
+      role: "Transcribes audio and video attachments",
+      live: Boolean(e.OPENAI_API_KEY),
+      detail: e.OPENAI_API_KEY ? `Model ${e.OPENAI_TRANSCRIBE_MODEL}` : "Audio and video attachments are not read",
     },
     {
       name: "mobilerun",

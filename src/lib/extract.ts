@@ -66,6 +66,13 @@ export async function pdfToText(bytes: Uint8Array): Promise<string> {
 
 export async function bytesToText(bytes: Uint8Array, contentType: string, filename?: string | null): Promise<string | null> {
   const name = filename?.toLowerCase() ?? "";
+  const { isTranscribable, transcribe } = await import("@/lib/integrations/openai");
+  if (isTranscribable(contentType, filename)) {
+    const { env } = await import("@/lib/env");
+    if (!env().OPENAI_API_KEY) return null;
+    const t = await transcribe(bytes, contentType, filename);
+    return t ? `Transcript of ${filename ?? "the recording"}:\n\n${t}` : null;
+  }
   if (contentType.includes("pdf") || name.endsWith(".pdf")) return pdfToText(bytes);
   if (contentType.includes("html") || name.endsWith(".html")) return htmlToText(new TextDecoder().decode(bytes)).text;
   if (contentType.startsWith("text/") || /\.(md|txt|csv|json)$/.test(name)) return new TextDecoder().decode(bytes).slice(0, MAX_TEXT);
