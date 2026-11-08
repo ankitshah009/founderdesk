@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, gt } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -6,9 +6,11 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { deskRun } from "@/app/actions";
 import { StageChip } from "@/components/stages";
+import { UsageBreakdown } from "@/components/usage";
 import { Button, Chip, MonoLabel } from "@/components/ui";
+import { nowMs } from "@/lib/clock";
 import { getDb } from "@/lib/db/client";
-import { jobs } from "@/lib/db/schema";
+import { dispatches, jobs } from "@/lib/db/schema";
 import { deskAccess } from "@/lib/desk-auth";
 import { env, integrationStatus } from "@/lib/env";
 import { SimulateInboundForm } from "./desk-forms";
@@ -30,6 +32,10 @@ async function Desk() {
   if (access === "unconfigured") return <p className="p-8 text-sm text-muted">Set DESK_TOKEN to enable the operator desk in production.</p>;
   const db = await getDb();
   const rows = await db.select().from(jobs).orderBy(desc(jobs.updatedAt)).limit(100);
+  const work = await db
+    .select({ provider: dispatches.provider, simulated: dispatches.simulated, costMicroUsd: dispatches.costMicroUsd, status: dispatches.status })
+    .from(dispatches)
+    .where(gt(dispatches.createdAt, new Date(nowMs() - 30 * 86400_000)));
   const integrations = integrationStatus();
   return (
     <div className="px-4 py-8 md:px-10 md:py-10">
@@ -94,6 +100,10 @@ async function Desk() {
             <Chip tone="amber">Simulator</Chip>
           </div>
           <SimulateInboundForm inbox={env().AGENTMAIL_INBOX_ID ?? "desk@founderdesk.simulated"} />
+        </section>
+        <section className="panel p-5 md:p-6 xl:col-span-2">
+          <p className="mb-4 text-sm text-fg">Usage · last 30 days</p>
+          <UsageBreakdown dispatches={work} />
         </section>
         <section className="panel p-5 md:p-6">
           <p className="text-sm text-fg">Integrations</p>

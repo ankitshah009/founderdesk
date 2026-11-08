@@ -4,6 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowUpRight, Mail, Smartphone } from "lucide-react";
+import { ActivityFeed, currentActivity } from "@/components/activity";
+import { GeneratingPanel } from "@/components/generating";
+import { avg as etaHistory } from "@/lib/eta";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Footer, Nav } from "@/components/chrome";
 import { IN_PROGRESS, StageChip, Timeline } from "@/components/stages";
@@ -73,12 +76,30 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
       <div className="flex flex-wrap items-center gap-3">
         <MonoLabel>Order {job.id.slice(0, 8).toUpperCase()}</MonoLabel>
         <StageChip stage={job.stage} />
-        <AutoRefresh tickUrl={tickUrl} active={IN_PROGRESS.includes(job.stage)} />
+        <AutoRefresh tickUrl={tickUrl} active={IN_PROGRESS.includes(job.stage) || job.stage === "WAITING_FOR_FOUNDER"} />
       </div>
       <div className="mt-8 grid gap-10 md:grid-cols-[1fr_320px]">
         <div className="min-w-0">
-          <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} />
-          <div className="panel mt-10 p-6 md:p-8">
+          {["PAID", "RESEARCHING", "WRITING", "REVIEWING", "PUBLISHING", "PUBLISHED"].includes(job.stage) ? (
+            <GeneratingPanel
+              stage={job.stage}
+              now={currentActivity(job, view.dispatches, view.sources)}
+              history={await etaHistory()}
+              running={view.dispatches.find((d) => d.status === "started" || (d.status === "pending" && d.startedAt)) ?? null}
+            />
+          ) : (
+            <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} />
+          )}
+          {view.dispatches.length || job.paidAt ? (
+            <section className="mt-10 rounded-3xl border border-line bg-panel p-3 md:p-4" aria-labelledby="activity-h">
+              <div className="flex items-center justify-between px-3 pt-2 pb-3">
+                <h2 id="activity-h" className="text-sm font-semibold text-fg">Activity</h2>
+                <span className="text-xs text-muted">Live — updates every few seconds</span>
+              </div>
+              <ActivityFeed job={job} dispatches={view.dispatches} sources={view.sources} waitMinutes={env().FOUNDER_WAIT_MINUTES} />
+            </section>
+          ) : null}
+          <div className="panel mt-6 p-6 md:p-8">
             <Timeline stage={job.stage} />
           </div>
         </div>

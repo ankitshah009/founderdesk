@@ -218,3 +218,11 @@ export async function claimFreeArticle(form: FormData) {
   }
   redirect(links.orderPath(jobId));
 }
+
+export async function deskRetry(form: FormData): Promise<void> {
+  await assertDesk();
+  const { retryJob } = await import("@/lib/workflow/store");
+  await retryJob(String(form.get("jobId")));
+  kick();
+  refresh();
+}

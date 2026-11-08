@@ -276,6 +276,10 @@ export const dispatches = pgTable(
     provider: text("provider"),
     providerRef: text("provider_ref"),
     simulated: boolean("simulated").notNull().default(false),
+    /** What this unit of work cost at the provider, in micro-USD. */
+    costMicroUsd: integer("cost_micro_usd").notNull().default(0),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
     maxAttempts: integer("max_attempts").notNull().default(4),
     input: jsonb("input").$type<Record<string, unknown>>().notNull().default({}),

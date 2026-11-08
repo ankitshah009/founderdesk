@@ -19,10 +19,10 @@ import { ProviderError } from "@/lib/integrations/http";
  */
 
 export type StartResult =
-  | { done: unknown; simulated?: boolean }
+  | { done: unknown; simulated?: boolean; costMicroUsd?: number }
   | { started: string; provider: string; simulated?: boolean }
   | { defer: number; reason: string };
-export type PollResult = { running: true } | { done: unknown } | { failed: string; retryable?: boolean };
+export type PollResult = { running: true } | { done: unknown; costMicroUsd?: number } | { failed: string; retryable?: boolean; costMicroUsd?: number };
 
 export type Handler = {
   start(d: Dispatch): Promise<StartResult>;
@@ -82,7 +82,7 @@ async function handleError(d: Dispatch, h: Handler, err: unknown) {
     await save(d.id, { attempts, error: reason.slice(0, 1000), leaseUntil: null, nextRunAt: backoff(attempts) });
     return;
   }
-  await save(d.id, { attempts, status: "failed", error: reason.slice(0, 1000), leaseUntil: null });
+  await save(d.id, { attempts, status: "failed", error: reason.slice(0, 1000), leaseUntil: null, finishedAt: new Date() });
   await h.fail({ ...d, attempts }, reason);
 }
 
@@ -109,7 +109,7 @@ async function finish(d: Dispatch, h: Handler, output: unknown) {
   await save(d.id, { output: output as never });
   try {
     await h.complete({ ...d, output }, output);
-    await save(d.id, { status: "succeeded", leaseUntil: null, error: null });
+    await save(d.id, { status: "succeeded", leaseUntil: null, error: null, finishedAt: new Date() });
   } catch (err) {
     await handleError({ ...d, output }, h, err);
   }
@@ -125,6 +125,7 @@ export async function step(): Promise<boolean> {
     return true;
   }
   try {
+    if (d.status === "pending" && !d.startedAt) await save(d.id, { startedAt: new Date() });
     if (d.status === "pending") {
       // A stored output means the remote work already finished and only the
       // apply step failed last time: re-apply rather than re-run.
@@ -133,7 +134,7 @@ export async function step(): Promise<boolean> {
       if ("defer" in res) {
         await save(d.id, { leaseUntil: null, error: res.reason, nextRunAt: new Date(Date.now() + res.defer) });
       } else if ("done" in res) {
-        if (res.simulated) await save(d.id, { simulated: true });
+        if (res.simulated || res.costMicroUsd) await save(d.id, { simulated: res.simulated ?? false, costMicroUsd: d.costMicroUsd + (res.costMicroUsd ?? 0) });
         await finish(d, h, res.done);
       } else {
         await save(d.id, {
@@ -151,8 +152,10 @@ export async function step(): Promise<boolean> {
       if ("running" in res) {
         await save(d.id, { leaseUntil: null, nextRunAt: new Date(Date.now() + (h.pollEveryMs ?? 3_000)) });
       } else if ("done" in res) {
+        if (res.costMicroUsd) await save(d.id, { costMicroUsd: d.costMicroUsd + res.costMicroUsd });
         await finish(d, h, res.done);
       } else {
+        if (res.costMicroUsd) await save(d.id, { costMicroUsd: d.costMicroUsd + res.costMicroUsd });
         const err = res.retryable ? new Error(res.failed) : new PermanentError(res.failed);
         if (res.retryable) {
           // A failed remote run must be started again from scratch, under a new

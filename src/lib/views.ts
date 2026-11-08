@@ -9,7 +9,7 @@ export async function orderView(jobId: string) {
   const job = await getJob(jobId);
   if (!job) return null;
   const db = await getDb();
-  const [draftRows, reviewRows, pubs, outbox, srcs, ev, approvalRows] = await Promise.all([
+  const [draftRows, reviewRows, pubs, outbox, srcs, ev, approvalRows, work] = await Promise.all([
     db.select().from(drafts).where(eq(drafts.jobId, jobId)).orderBy(desc(drafts.version)),
     db.select().from(reviews).where(eq(reviews.jobId, jobId)).orderBy(desc(reviews.createdAt)),
     db.select().from(publications).where(eq(publications.jobId, jobId)).orderBy(asc(publications.createdAt)),
@@ -17,10 +17,11 @@ export async function orderView(jobId: string) {
     jobSources(jobId),
     jobEvidence(jobId),
     db.select().from(approvals).where(eq(approvals.jobId, jobId)).orderBy(asc(approvals.approvedAt)),
+    db.select().from(dispatches).where(eq(dispatches.jobId, jobId)).orderBy(asc(dispatches.createdAt)),
   ]);
   const draft = draftRows[0] ?? null;
   const review = draft ? (reviewRows.find((r) => r.draftId === draft.id) ?? null) : null;
-  return { job, draft, drafts: draftRows, review, reviews: reviewRows, publications: pubs, web: pubs.find((p) => p.destination === "web") ?? null, outbox, sources: srcs, evidence: ev, approvals: approvalRows };
+  return { job, draft, drafts: draftRows, review, reviews: reviewRows, publications: pubs, web: pubs.find((p) => p.destination === "web") ?? null, outbox, sources: srcs, evidence: ev, approvals: approvalRows, dispatches: work };
 }
 
 export type OrderView = NonNullable<Awaited<ReturnType<typeof orderView>>>;
@@ -29,9 +30,6 @@ export async function deskJobView(jobId: string) {
   const base = await orderView(jobId);
   if (!base) return null;
   const db = await getDb();
-  const [work, events] = await Promise.all([
-    db.select().from(dispatches).where(eq(dispatches.jobId, jobId)).orderBy(asc(dispatches.createdAt)),
-    db.select().from(providerEvents).where(eq(providerEvents.jobId, jobId)).orderBy(asc(providerEvents.receivedAt)),
-  ]);
-  return { ...base, dispatches: work, events };
+  const events = await db.select().from(providerEvents).where(eq(providerEvents.jobId, jobId)).orderBy(asc(providerEvents.receivedAt));
+  return { ...base, events };
 }

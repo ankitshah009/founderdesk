@@ -1,16 +1,17 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
+import { currentActivity } from "@/components/activity";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Footer, Nav } from "@/components/chrome";
 import { IN_PROGRESS, STAGE_LABEL, StageChip } from "@/components/stages";
 import { ButtonLink, cn } from "@/components/ui";
 import { getDb } from "@/lib/db/client";
-import { jobs, publications, type JobStage } from "@/lib/db/schema";
+import { dispatches, jobs, publications, sources, type JobStage } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { links } from "@/lib/links";
 import { currentSession } from "@/lib/auth";
@@ -69,6 +70,13 @@ async function Orders() {
   const db = await getDb();
   const rows = await db.select().from(jobs).where(eq(jobs.founderEmail, email)).orderBy(desc(jobs.createdAt)).limit(50);
   const pubs = rows.length ? await db.select().from(publications).where(eq(publications.destination, "web")) : [];
+  const ids = rows.map((r) => r.id);
+  const [work, srcs] = ids.length
+    ? await Promise.all([
+        db.select().from(dispatches).where(inArray(dispatches.jobId, ids)).orderBy(asc(dispatches.createdAt)),
+        db.select().from(sources).where(inArray(sources.jobId, ids)),
+      ])
+    : [[], []];
   const live = rows.some((r) => IN_PROGRESS.includes(r.stage) || r.stage === "WAITING_FOR_FOUNDER");
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 md:py-20">
@@ -103,6 +111,14 @@ async function Orders() {
                 <StageChip stage={j.stage} />
               </div>
               {j.stage !== "AWAITING_PAYMENT" && j.stage !== "UNABLE_TO_COMPLETE" ? <Progress stage={j.stage} /> : null}
+              {(() => {
+                const now = currentActivity(j, work.filter((w) => w.jobId === j.id), srcs.filter((x) => x.jobId === j.id));
+                return now ? (
+                  <p className="mt-4 flex items-center gap-2 text-sm text-fg-2">
+                    <span className="size-1.5 rounded-full bg-accent pulse-dot" aria-hidden /> Now: {now}
+                  </p>
+                ) : null;
+              })()}
               {j.stage === "WAITING_FOR_FOUNDER" && j.openQuestions[0] ? (
                 <p className="mt-4 rounded-xl bg-accent-tint px-4 py-3 text-sm text-fg">{j.openQuestions[0]} <span className="text-fg-2/70">— reply to our email, or we&apos;ll continue with the safe choice shortly.</span></p>
               ) : null}

@@ -150,7 +150,7 @@ export function writePrompt(args: {
 
 export function reviewPrompt(args: {
   job: Job;
-  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[] };
+  draft: { title: string; dek: string; bodyMarkdown: string; announcement: string; claims: Claim[]; variants?: { x?: string[]; linkedin?: string } };
   sources: SourceView[];
   priorFindings: Finding[];
 }): string {
@@ -160,7 +160,8 @@ export function reviewPrompt(args: {
     `Founder replies so far:\n${repliesBlock(args.job.founderReplies)}`,
     args.priorFindings.length ? `Findings from the previous review:\n${args.priorFindings.map((f) => `- ${f.kind}: ${f.claim}`).join("\n")}` : "",
     `Sources:\n\n${sourcesBlock(args.sources, 3000)}`,
-    `Draft title: ${args.draft.title}\nDek: ${args.draft.dek}\n\n${args.draft.bodyMarkdown}\n\nAnnouncement: ${args.draft.announcement}`,
+    "Note: {{url}} in the announcement and posts is filled in with the article link at publication. It is correct, not an unfilled placeholder. A source labelled as the founder's notes is a legitimate citation for the founder's own views and experience.",
+    `Draft title: ${args.draft.title}\nDek: ${args.draft.dek}\n\n${args.draft.bodyMarkdown}\n\nAnnouncement: ${args.draft.announcement}${args.draft.variants?.x?.length ? `\n\nX thread:\n${args.draft.variants.x.join("\n---\n")}` : ""}${args.draft.variants?.linkedin ? `\n\nLinkedIn post:\n${args.draft.variants.linkedin}` : ""}`,
   ]
     .filter(Boolean)
     .join("\n\n");

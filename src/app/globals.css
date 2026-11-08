@@ -223,3 +223,11 @@ body {
     }
   }
 }
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[shimmer_2\.4s_linear_infinite\], .animate-ping { animation: none; }
+}

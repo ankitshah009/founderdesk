@@ -70,12 +70,14 @@ async function naiveStart(d: Dispatch, role: Role, message: string, schema: z.Zo
 
 function naivePoller(schema: z.ZodType) {
   return async (d: Dispatch): Promise<PollResult> => {
-    const verdict = naive.judgeSession(await naive.getSession(d.providerRef!));
+    const session = await naive.getSession(d.providerRef!);
+    const verdict = naive.judgeSession(session);
     if (verdict.state === "running") return { running: true };
-    if (verdict.state === "failed") return { failed: `Naïve session ${d.providerRef}: ${verdict.reason}`, retryable: true };
+    const costMicroUsd = Math.max(0, Math.round(session.consumed_micro_usd ?? 0));
+    if (verdict.state === "failed") return { failed: `Naïve session ${d.providerRef}: ${verdict.reason}`, retryable: true, costMicroUsd };
     const parsed = schema.safeParse(verdict.output);
-    if (!parsed.success) return { failed: `Structured result did not validate: ${parsed.error.issues[0]?.message}`, retryable: true };
-    return { done: parsed.data };
+    if (!parsed.success) return { failed: `Structured result did not validate: ${parsed.error.issues[0]?.message}`, retryable: true, costMicroUsd };
+    return { done: parsed.data, costMicroUsd };
   };
 }
 
@@ -88,7 +90,7 @@ async function failJob(jobId: string, reason: string) {
 async function monidStart(provider: string, endpoint: string, input: Record<string, unknown>): Promise<StartResult> {
   const run = await monid.run(provider, endpoint, input);
   if (run.status === "BLOCKED") throw new PermanentError(`Monid blocked the run: ${run.reason ?? "control gate"}`);
-  if (run.status === "COMPLETED") return { done: { monid: run } };
+  if (run.status === "COMPLETED") return { done: { monid: run }, costMicroUsd: monidCost(run) };
   if (monid.TERMINAL.has(run.status)) throw new Error(`Monid run ${run.runId} ended ${run.status}`);
   return { started: run.runId, provider: "monid" };
 }
@@ -96,8 +98,15 @@ async function monidStart(provider: string, endpoint: string, input: Record<stri
 async function monidPoll(d: Dispatch): Promise<PollResult> {
   const run = await monid.getRun(d.providerRef!);
   if (!monid.TERMINAL.has(run.status)) return { running: true };
-  if (run.status === "COMPLETED") return { done: { monid: run } };
+  if (run.status === "COMPLETED") return { done: { monid: run }, costMicroUsd: monidCost(run) };
   return { failed: `Monid run ${run.runId} ended ${run.status}`, retryable: run.status === "FAILED" || run.status === "TIMED_OUT" };
+}
+
+/** Monid reports price per call; use the settled billing amount when present. */
+function monidCost(run: monid.MonidRun): number {
+  const r = run as monid.MonidRun & { billing?: { amount?: { value?: number } }; price?: { amount?: { value?: number } } };
+  const usd = r.billing?.amount?.value ?? r.price?.amount?.value ?? 0;
+  return Math.round(usd * 1_000_000);
 }
 
 function providerFailed(run: monid.MonidRun): boolean {
@@ -127,6 +136,12 @@ registerHandler("research_plan", {
     const db = await getDb();
     if (!job.thesis) await db.update(jobs).set({ thesis: plan.refinedThesis }).where(eq(jobs.id, job.id));
 
+    // The founder's notes are a citable source of the founder's own claims
+    // (never counted as external evidence for figures). Idempotent.
+    const before = await jobSources(job.id);
+    if (!before.some((x) => x.kind === "founder_note")) {
+      await addSources(job.id, [{ kind: "founder_note" as const, title: "The founder's notes", content: job.seedText, contentHash: sha256(job.seedText), status: "fetched" as const, provider: "founder" }]);
+    }
     // Founder links become sources (idempotent on re-apply).
     const existing = await jobSources(job.id);
     const have = new Set(existing.map((s) => s.url));

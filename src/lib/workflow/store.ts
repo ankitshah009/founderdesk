@@ -130,3 +130,16 @@ export async function dispatchCount(jobId: string, kind: DispatchKind): Promise<
     .where(and(eq(dispatches.jobId, jobId), eq(dispatches.kind, kind)));
   return row?.n ?? 0;
 }
+
+/**
+ * Operator recovery for an order that stopped at UNABLE_TO_COMPLETE: reset the
+ * revision budget and write a fresh draft. Idempotent per click (new key each).
+ */
+export async function retryJob(jobId: string): Promise<boolean> {
+  const draft = await latestDraft(jobId);
+  const moved = await transition(jobId, ["UNABLE_TO_COMPLETE"], draft ? "WRITING" : "RESEARCHING", "Retried by the desk", { revisionCycles: 0 });
+  if (!moved) return false;
+  if (draft) await enqueue(jobId, "write", `${jobId}:write:v${draft.version + 1}:retry${Date.now()}`, { version: draft.version + 1 });
+  else await enqueue(jobId, "research_plan", `${jobId}:research_plan:retry${Date.now()}`);
+  return true;
+}

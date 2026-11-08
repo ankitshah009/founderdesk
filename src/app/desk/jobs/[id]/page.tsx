@@ -4,8 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { UsageBreakdown } from "@/components/usage";
 import { IN_PROGRESS, StageChip } from "@/components/stages";
-import { ButtonLink, Chip, MonoLabel, cn } from "@/components/ui";
+import { Button, ButtonLink, Chip, MonoLabel, cn } from "@/components/ui";
+import { deskRetry } from "@/app/actions";
 import { deskAccess } from "@/lib/desk-auth";
 import { links } from "@/lib/links";
 import { signLink } from "@/lib/security";
@@ -57,6 +59,12 @@ async function DeskJob({ params }: PageProps<"/desk/jobs/[id]">) {
           <AutoRefresh tickUrl={`/api/orders/${job.id}/tick?t=${encodeURIComponent(signLink(job.id, "order"))}`} active={IN_PROGRESS.includes(job.stage)} />
         </div>
         {job.stageReason ? <p className="mt-2 text-sm text-muted">{job.stageReason}</p> : null}
+        {job.stage === "UNABLE_TO_COMPLETE" ? (
+          <form action={deskRetry} className="mt-3">
+            <input type="hidden" name="jobId" value={job.id} />
+            <Button type="submit">Retry this order</Button>
+          </form>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <ButtonLink href={links.orderPath(job.id)} variant="secondary">
             Founder order page
@@ -112,6 +120,10 @@ async function DeskJob({ params }: PageProps<"/desk/jobs/[id]">) {
           <ReplyForm jobId={job.id} />
         </Section>
       </div>
+
+      <Section title="Usage">
+        <UsageBreakdown dispatches={v.dispatches} />
+      </Section>
 
       <Section title="Dispatches" aside={<span className="text-xs text-muted">{v.dispatches.length} units of work</span>}>
         <div className="overflow-x-auto">
