@@ -8,14 +8,14 @@ export function cn(...parts: Array<string | false | null | undefined>) {
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-white text-[#222] hover:bg-[#e8e8e8]",
-  secondary: "bg-[#2a2a2a] text-fg hover:bg-[#333]",
-  ghost: "text-fg-2 hover:text-fg hover:bg-white/5",
-  danger: "bg-red/15 text-red hover:bg-red/25",
+  primary: "rounded-none bg-accent text-[#140a05] hover:bg-[#ff6f3a]",
+  secondary: "rounded-none border border-line-strong bg-transparent text-fg hover:bg-white/5",
+  ghost: "rounded-lg text-fg-2 hover:text-fg hover:bg-white/5",
+  danger: "rounded-lg bg-red/15 text-red hover:bg-red/25",
 };
 
 const base =
-  "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium tracking-[0.0075em] transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap";
+  "inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold tracking-[0.0075em] transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap";
 
 export function Button({ variant = "primary", className, ...props }: ComponentProps<"button"> & { variant?: Variant }) {
   return <button className={cn(base, variants[variant], className)} {...props} />;

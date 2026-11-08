@@ -7,20 +7,20 @@
  * announcements and mono step labels. Brand, copy and product are our own.
  */
 :root {
-  --bg: #000000;
-  --panel: #0a0a0a;
-  --panel-2: #111111;
-  --elev: #181818;
+  --bg: #0b0a09;
+  --panel: #141210;
+  --panel-2: #1b1815;
+  --elev: #221e1a;
   --line: rgb(255 255 255 / 0.08);
   --line-strong: rgb(255 255 255 / 0.14);
   --guide: rgb(255 255 255 / 0.07);
-  --fg: #edf2f5;
-  --fg-2: #d1d1d1;
-  --muted: #828282;
-  --subtle: #5c5c5c;
-  --accent: #ff6b3d;
-  --accent-ink: #ff9b78;
-  --accent-tint: rgb(255 107 61 / 0.14);
+  --fg: #f3eee8;
+  --fg-2: #d9d1c8;
+  --muted: #9a9088;
+  --subtle: #645b54;
+  --accent: #ff5a1f;
+  --accent-ink: #ff8a4c;
+  --accent-tint: rgb(255 90 31 / 0.14);
   --blue: #3b82f6;
   --green: #3ecf8e;
   --amber: #f5b14c;
@@ -48,6 +48,8 @@
   --color-red: var(--red);
   --font-sans: var(--font-inter), "SF Pro Display", -apple-system, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: var(--font-serif), Georgia, serif;
+  --font-display: var(--font-display), var(--font-inter), system-ui, sans-serif;
 }
 
 html {
@@ -63,7 +65,7 @@ body {
 }
 
 ::selection {
-  background: rgb(255 107 61 / 0.35);
+  background: rgb(255 90 31 / 0.4);
   color: #fff;
 }
 
@@ -75,16 +77,47 @@ body {
 
 @layer components {
   .display {
-    font-weight: 500;
-    font-size: clamp(2.25rem, 5.2vw, 3.375rem);
-    line-height: 1.04;
-    letter-spacing: -0.045em;
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(2.75rem, 8vw, 6.25rem);
+    line-height: 0.98;
+    letter-spacing: -0.055em;
   }
+  .display-md {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(2.25rem, 5.5vw, 4.25rem);
+    line-height: 1.02;
+    letter-spacing: -0.05em;
+  }
+  .serif-accent {
+    font-family: var(--font-serif), Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+  .text-gradient {
+    background: linear-gradient(90deg, #ff4d1a 0%, #ff7a2e 55%, #ffa04d 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glow-warm {
+    background:
+      radial-gradient(60% 55% at 12% 10%, rgb(255 90 31 / 0.38), transparent 70%),
+      radial-gradient(45% 50% at 85% 70%, rgb(200 30 45 / 0.32), transparent 70%),
+      radial-gradient(40% 40% at 55% 105%, rgb(255 150 60 / 0.22), transparent 70%),
+      var(--bg);
+  }
+  .tile-1 { background: radial-gradient(70% 60% at 25% 20%, #e2481c, transparent 70%), radial-gradient(60% 60% at 80% 85%, #b8742a, transparent 70%), #1a1411; }
+  .tile-2 { background: radial-gradient(70% 60% at 60% 15%, #c21e33, transparent 70%), radial-gradient(60% 60% at 15% 85%, #7a1a14, transparent 70%), #1a1213; }
+  .tile-3 { background: radial-gradient(70% 60% at 40% 15%, #c97a2a, transparent 70%), radial-gradient(60% 60% at 85% 85%, #b21c2c, transparent 70%), #181312; }
   .h1 {
-    font-weight: 500;
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-weight: 600;
     font-size: clamp(2rem, 4.4vw, 3rem);
     line-height: 1.12;
-    letter-spacing: -0.0225em;
+    letter-spacing: -0.04em;
   }
   .h2 {
     font-weight: 500;

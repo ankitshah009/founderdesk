@@ -1,13 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, Check, FileText, Inbox, Layers, ShieldCheck } from "lucide-react";
-import { Mark } from "@/components/brand";
 import { Announcement, Footer, Nav } from "@/components/chrome";
 import { ArchitectureDiagram } from "@/components/landing/architecture";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { ButtonLink, Chip, MonoLabel, SectionHead, cn } from "@/components/ui";
-
-const STATEMENT =
-  "Founders have the insight. What they don't have is the week it takes to research it, write it, check every number, and publish it.";
 
 const INFRA = [
   ["AgentMail", "Inbox & replies"],
@@ -26,12 +22,14 @@ export default function Home() {
       <main className="flex-1">
         <Hero />
         <ProductShot />
-        <Infra />
         <Statement />
-        <section id="how" className="hairline-t scroll-mt-16">
+        <Steps />
+        <Channels />
+        <Infra />
+        <section className="hairline-t">
           <div className="frame">
             <div className="px-4 pt-20 pb-12 md:px-12">
-              <SectionHead label="[01] How it works" title="One email in. One verified article out." lede="Every step is recorded in Postgres, not in an agent's memory — so retries never double-charge, double-post or lose your answer." />
+              <SectionHead label="Inside a review" title="Every claim, held to its source." lede="Every step is recorded in Postgres, not in an agent's memory — so retries never double-charge, double-post or lose your answer." />
             </div>
             <HowItWorks />
           </div>
@@ -56,26 +54,25 @@ export default function Home() {
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden">
-      <div className="grid-ceiling" aria-hidden />
-      <div className="grid-floor" aria-hidden />
-      <div className="frame relative flex flex-col items-center px-4 pt-24 pb-28 text-center md:pt-32 md:pb-36">
-        <div className="orb mb-10 flex size-16 items-center justify-center rounded-full text-fg">
-          <Mark size={26} />
-        </div>
-        <h1 className="display max-w-3xl text-fg">
-          Email your notes.
-          <br />
-          Approve the exact article.
+    <section className="glow-warm relative overflow-hidden">
+      <div className="mx-auto max-w-[1240px] px-4 pt-20 pb-16 md:px-8 md:pt-28 md:pb-24">
+        <p className="text-xs font-semibold tracking-[0.18em] text-fg-2/80 uppercase">Research agent for founders</p>
+        <h1 className="display mt-8 max-w-[15ch] text-fg">
+          Drop in your notes.{" "}
+          <span className="text-gradient">We&apos;ll write the article you&apos;d sign.</span>
         </h1>
-        <p className="lede mt-6 max-w-xl">
-          FounderDesk researches your argument, writes it in your voice, checks every claim against its source, and publishes only the version you approved.
-        </p>
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
-          <ButtonLink href="/start">Start an article</ButtonLink>
-          <ButtonLink href="#how" variant="secondary">
-            See how it works
-          </ButtonLink>
+        <div className="mt-12 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+          <p className="max-w-lg text-lg leading-relaxed text-fg-2 md:text-xl">
+            FounderDesk researches your argument, checks every claim against its source, asks you when only you know, and publishes only the version you approved.
+          </p>
+          <div className="flex flex-wrap items-center gap-6">
+            <ButtonLink href="/start" className="px-7 py-4 text-base">
+              Start an article <ArrowRight className="size-4" aria-hidden />
+            </ButtonLink>
+            <Link href="#how" className="border-b-2 border-accent pb-1 text-base font-semibold text-fg hover:text-accent-ink">
+              See how it works
+            </Link>
+          </div>
         </div>
       </div>
     </section>
@@ -193,18 +190,72 @@ function Infra() {
 }
 
 function Statement() {
-  const words = STATEMENT.split(" ");
   return (
-    <section className="hairline-t">
-      <div className="frame px-4 py-28 md:px-12 md:py-40">
-        <p className="h1 mx-auto max-w-3xl text-center text-fg">
-          {words.map((w, i) => (
-            <span key={i} className="reveal-word inline-block">
-              {w}
-              {i < words.length - 1 ? " " : ""}
-            </span>
-          ))}
+    <section className="bg-bg">
+      <div className="mx-auto max-w-[1240px] px-4 py-28 md:px-8 md:py-40">
+        <p className="display-md max-w-[22ch] text-fg">
+          Founders don&apos;t lack ideas. They lack the hours to turn them into <span className="serif-accent text-gradient pr-1">something people trust.</span>
         </p>
+      </div>
+    </section>
+  );
+}
+
+const STEPS = [
+  { n: "01", tile: "tile-1", title: "Send the idea", body: "Notes, a pilot report, a few links. Email them or paste them in. Rough is fine." },
+  { n: "02", tile: "tile-2", title: "It researches and checks", body: "Sources are fetched and every number is held to its passage. When only you know the answer, it asks you by email." },
+  { n: "03", tile: "tile-3", title: "You approve, it ships", body: "Read the exact text with sources beside each claim. Approve it and it's published, verified live, and checked on a phone." },
+];
+
+function Steps() {
+  return (
+    <section id="how" className="scroll-mt-16 bg-bg">
+      <div className="mx-auto grid max-w-[1240px] gap-8 px-4 pb-28 md:grid-cols-3 md:gap-6 md:px-8">
+        {STEPS.map((s) => (
+          <div key={s.n}>
+            <div className={cn(s.tile, "flex aspect-[5/4] items-end rounded-3xl p-7")}>
+              <span className="font-[family-name:var(--font-display)] text-7xl font-semibold tracking-[-0.06em] text-fg md:text-8xl">{s.n}</span>
+            </div>
+            <h3 className="mt-6 text-2xl font-semibold tracking-[-0.035em] text-fg md:text-3xl">{s.title}</h3>
+            <p className="mt-3 text-base leading-relaxed text-muted">{s.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type Channel = { tag: string; title: string; body: string; status: string; tone: "live" | "connect" | "planned"; style: string };
+const CHANNELS: Channel[] = [
+  { tag: "WEB ARTICLE", title: "A full article, with the receipts", body: "Long-form, in your voice, with a source beside every claim — published and verified live.", status: "Live", tone: "live", style: "bg-[linear-gradient(135deg,#ff5a1f,#ff8a3c)] text-[#140a05]" },
+  { tag: "X", title: "A post with a real hook", body: "One idea, a strong first line, and a link back to the full article. Approved separately.", status: "Connect your account", tone: "connect", style: "bg-[linear-gradient(160deg,#2a1714,#160f0d)] text-fg" },
+  { tag: "LINKEDIN", title: "Posts that sound like you", body: "The same argument for a professional feed, read back by ID before we call it published.", status: "Connect your account", tone: "connect", style: "bg-[linear-gradient(135deg,#c81f30,#e0362d)] text-fg" },
+  { tag: "NEWSLETTER", title: "An issue ready to send", body: "A subject line and a tight issue that points readers to the full piece.", status: "Planned", tone: "planned", style: "bg-panel text-fg" },
+  { tag: "INSTAGRAM", title: "Carousels and captions", body: "Slide-by-slide copy from the approved article.", status: "Planned", tone: "planned", style: "bg-[linear-gradient(160deg,#4a1a0e,#2a120c)] text-fg" },
+];
+
+function Channels() {
+  return (
+    <section className="bg-bg">
+      <div className="mx-auto max-w-[1240px] px-4 pb-28 md:px-8">
+        <h2 className="display-md text-fg">
+          One idea. <span className="serif-accent">Every</span> channel.
+        </h2>
+        <p className="mt-5 max-w-xl text-lg text-muted">Each destination is approved on its own, and nothing is called published until we&apos;ve read it back.</p>
+        <ul className="mt-14 grid gap-5 md:grid-cols-3">
+          {CHANNELS.map((c) => (
+            <li key={c.tag} className={cn("flex min-h-[360px] flex-col justify-between rounded-3xl p-8", c.style)}>
+              <div className="flex items-start justify-between gap-3">
+                <span className="bg-white px-3 py-1.5 text-xs font-bold tracking-[0.08em] text-black">{c.tag}</span>
+                <span className={cn("text-xs font-semibold", c.tone === "live" ? "text-[#140a05]" : c.tone === "connect" ? "text-fg-2" : "text-fg-2/60")}>{c.status}</span>
+              </div>
+              <div>
+                <h3 className="text-[1.75rem] leading-[1.08] font-semibold tracking-[-0.04em] md:text-3xl">{c.title}</h3>
+                <p className={cn("mt-4 text-base leading-relaxed", c.tone === "live" ? "text-[#140a05]/80" : "text-fg-2/85")}>{c.body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
@@ -336,14 +387,13 @@ function Pricing() {
 
 function FinalCta() {
   return (
-    <section className="relative hairline-t overflow-hidden">
-      <div className="grid-floor opacity-70" aria-hidden />
-      <div className="frame relative flex flex-col items-center px-4 py-28 text-center">
-        <h2 className="h1 max-w-2xl text-fg">Your next article is one email away</h2>
-        <p className="lede mt-4 max-w-md">Send notes, a report and a few links. Approve the exact text. We handle everything in between.</p>
-        <div className="mt-8 flex gap-2.5">
-          <ButtonLink href="/start">
-            Start an article <ArrowRight className="size-3.5" aria-hidden />
+    <section className="glow-warm relative overflow-hidden">
+      <div className="mx-auto flex max-w-[1240px] flex-col items-center px-4 py-32 text-center md:px-8 md:py-44">
+        <h2 className="display max-w-[16ch] text-fg">Your notes are already the first draft.</h2>
+        <p className="mt-6 max-w-md text-lg text-fg-2">Send them over. Approve the exact text. We handle everything in between.</p>
+        <div className="mt-10">
+          <ButtonLink href="/start" className="px-8 py-4 text-base">
+            Start an article <ArrowRight className="size-4" aria-hidden />
           </ButtonLink>
         </div>
       </div>

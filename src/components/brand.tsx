@@ -14,7 +14,7 @@ export function Mark({ size = 20, className }: { size?: number; className?: stri
 export function Wordmark() {
   return (
     <Link href="/" className="inline-flex items-center gap-2 text-[17px] font-semibold tracking-[-0.02em] text-fg">
-      <Mark />
+      <span aria-hidden className="size-3.5 rounded-full bg-accent" />
       FounderDesk
     </Link>
   );
