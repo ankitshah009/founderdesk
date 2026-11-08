@@ -55,7 +55,7 @@ export type ChallengeResult = { sent: boolean; challengeId?: string; link?: stri
  * Create a sign-in challenge and email it. Always resolves the same way to the
  * caller (no enumeration); `sent` is for logging and tests only.
  */
-export async function startChallenge(rawEmail: string, opts: { deliver?: boolean } = {}): Promise<ChallengeResult> {
+export async function startChallenge(rawEmail: string, opts: { deliver?: boolean; allowNew?: boolean } = {}): Promise<ChallengeResult> {
   const email = normalize(rawEmail);
   if (!isEmail(email)) throw new AuthError("Enter a valid email address.");
   const db = await getDb();
@@ -71,7 +71,8 @@ export async function startChallenge(rawEmail: string, opts: { deliver?: boolean
   }
   // Only email addresses with orders get mail; the response is identical.
   const [hasOrders] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.founderEmail, email)).limit(1);
-  if (!hasOrders) {
+  // Studio sign-up (allowNew) may create a workspace for a new address.
+  if (!hasOrders && !opts.allowNew) {
     await audit("challenge.unknown_email", email);
     return { sent: false };
   }

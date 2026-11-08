@@ -9,7 +9,7 @@ type Props = {
   draftId: string;
   contentHash: string;
   destination: string;
-  social: Array<{ id: string; label: string }>;
+  social: Array<{ id: string; label: string; simulated?: boolean; autoPost?: boolean }>;
   readyImages?: Array<{ id: string; slot: string; preselected: boolean }>;
   draft: { title: string; dek: string; bodyMarkdown: string; announcement: string };
 };
@@ -40,8 +40,18 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
         {social.map((s) => (
           <div key={s.id}>
             <label className="flex items-center gap-2.5 text-fg-2">
-              <input type="checkbox" name="destinations" value={s.id} className="accent-white" />
-              Announce on {s.label}
+              <input
+                type="checkbox"
+                name="destinations"
+                value={s.id}
+                // Auto-post accounts start ticked; Instagram only when an image is ticked too.
+                defaultChecked={Boolean(s.autoPost) && (s.id !== "instagram" || readyImages.some((i) => i.preselected))}
+                className="accent-white"
+              />
+              <span>
+                {s.label}
+                {s.simulated ? <span className="ml-1.5 rounded border border-line px-1 py-px text-[10px] tracking-wide text-subtle uppercase">simulated</span> : null}
+              </span>
             </label>
             {s.id === "x" ? (
               <div className="mt-2 ml-6 flex gap-4 text-xs text-fg-2" role="radiogroup" aria-label="X format">

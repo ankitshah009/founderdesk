@@ -29,9 +29,15 @@ import {
 } from "./editorial";
 import { PermanentError, idempotencyKey, registerHandler, type PollResult, type StartResult } from "./engine";
 import { queueMessage, templates } from "./outbound";
+import { scoreDraft } from "@/lib/studio/quality";
+import { logAgent, relevantKnowledge, studioContext } from "@/lib/studio/store";
+import { applyStyleGuide, styleBrief, styleGuideFindings } from "@/lib/studio/style";
+import { voiceBrief } from "@/lib/studio/voice";
+import { isSoftFinding } from "./humanize";
 import { addSources, dispatchCount, enqueue, getJob, jobEvidence, jobSources, latestDraft, latestReview, openDispatchCount, transition } from "./store";
 
 const MIN_USEFUL_TEXT = 200;
+const KB_LABEL: Record<string, string> = { company: "Company facts", product: "Product", opinion: "Founder opinion", article: "Earlier article", source: "Approved source" };
 
 async function requireJob(d: Dispatch): Promise<Job> {
   const job = await getJob(d.jobId);
@@ -57,7 +63,7 @@ async function agentId(role: Role): Promise<string> {
   return created.id;
 }
 
-async function naiveStart(d: Dispatch, role: Role, message: string, schema: z.ZodType): Promise<StartResult> {
+export async function naiveStart(d: Dispatch, role: Role, message: string, schema: z.ZodType): Promise<StartResult> {
   const session = await naive.createSession({
     agentId: await agentId(role),
     message,
@@ -68,7 +74,7 @@ async function naiveStart(d: Dispatch, role: Role, message: string, schema: z.Zo
   return { started: session.id, provider: "naive" };
 }
 
-function naivePoller(schema: z.ZodType) {
+export function naivePoller(schema: z.ZodType) {
   return async (d: Dispatch): Promise<PollResult> => {
     const session = await naive.getSession(d.providerRef!);
     const verdict = naive.judgeSession(session);
@@ -142,6 +148,27 @@ registerHandler("research_plan", {
     if (!before.some((x) => x.kind === "founder_note")) {
       await addSources(job.id, [{ kind: "founder_note" as const, title: "The founder's notes", content: job.seedText, contentHash: sha256(job.seedText), status: "fetched" as const, provider: "founder" }]);
     }
+    // The founder's knowledge base: pinned and relevant items become citable
+    // sources. Approved external sources keep their URL; company facts and
+    // opinions are the founder's own claims, like their notes. Idempotent.
+    let kbCount = 0;
+    if (!before.some((x) => x.provider === "knowledge")) {
+      const kb = await relevantKnowledge(job);
+      kbCount = kb.length;
+      await addSources(
+        job.id,
+        kb.map((k) =>
+          k.kind === "source" && k.url && !job.sourceUrls.includes(k.url)
+            ? { kind: "founder_url" as const, url: k.url, title: k.title, content: k.content, contentHash: sha256(k.content), status: "fetched" as const, provider: "knowledge", meta: { knowledgeId: k.id } }
+            : { kind: "knowledge" as const, title: `${KB_LABEL[k.kind] ?? "Knowledge"}: ${k.title}`, content: k.content, contentHash: sha256(k.content), status: "fetched" as const, provider: "knowledge", meta: { knowledgeId: k.id, kbKind: k.kind } },
+        ),
+      );
+    }
+    await logAgent(job.id, "researcher", `${d.requestKey}:agent`, "Planned the research", [
+      `Thesis: ${plan.refinedThesis}`,
+      ...plan.researchQuestions.slice(0, 3),
+      kbCount ? `Pulled ${kbCount} item${kbCount > 1 ? "s" : ""} from your knowledge base` : "No matching knowledge-base items",
+    ], !isLive("naive"));
     // Founder links become sources (idempotent on re-apply).
     const existing = await jobSources(job.id);
     const have = new Set(existing.map((s) => s.url));
@@ -327,6 +354,12 @@ registerHandler("research_synthesis", {
         );
       }
     }
+    const kept = await jobEvidence(d.jobId);
+    const fromSources = new Set(kept.map((e) => e.sourceRef).filter(Boolean)).size;
+    await logAgent(d.jobId, "researcher", `${d.requestKey}:agent`, `Kept ${kept.length} verbatim passage${kept.length === 1 ? "" : "s"} from ${fromSources} source${fromSources === 1 ? "" : "s"}`, [
+      `${kept.filter((e) => e.kind === "supporting").length} supporting, ${kept.filter((e) => e.kind === "limitation").length} limitations, ${kept.filter((e) => e.kind === "contradiction").length} contradictions`,
+      `${srcs.filter((s) => s.status === "fetched").length} sources read, ${srcs.filter((s) => s.status === "empty" || s.status === "failed").length} had no usable text`,
+    ], !isLive("naive"));
     if (await transition(d.jobId, ["RESEARCHING"], "WRITING")) {
       await enqueue(d.jobId, "write", `${d.jobId}:write:v1`, { version: 1 });
     }
@@ -352,16 +385,32 @@ registerHandler("write", {
     const job = await requireJob(d);
     const [srcs, ev, findings, prev] = await Promise.all([jobSources(job.id), jobEvidence(job.id), cumulativeFindings(job.id), latestDraft(job.id)]);
     const evidenceView = ev.map((e) => ({ sourceRef: e.sourceRef ?? "", passage: e.passage, supports: e.supports, kind: e.kind }));
+    const ctx = await studioContext(job);
+    // The persona is the audience: write for who the founder chose.
+    const briefed = ctx.persona ? { ...job, audience: ctx.persona.description } : job;
     if (isLive("naive")) {
-      return naiveStart(d, "writer", writePrompt({ job, sources: srcs, evidence: evidenceView, findings, previousBody: prev?.bodyMarkdown ?? null }), draftOutputSchema);
+      return naiveStart(d, "writer", writePrompt({ job: briefed, sources: srcs, evidence: evidenceView, findings, previousBody: prev?.bodyMarkdown ?? null, studio: studioBrief(ctx) }), draftOutputSchema);
     }
-    return { done: localWrite({ job, sources: srcs, evidence: evidenceView, findings }), simulated: true };
+    return { done: localWrite({ job: briefed, sources: srcs, evidence: evidenceView, findings }), simulated: true };
   },
   poll: naivePoller(draftOutputSchema),
   async complete(d, output) {
-    const out = draftOutputSchema.parse(output);
+    const written = draftOutputSchema.parse(output);
     const version = Number(d.input.version);
     const db = await getDb();
+    // The Editor: the founder's style guide and remembered corrections, applied
+    // to every field that will be published, live or simulated.
+    const ctx = await studioContext((await requireJob(d)));
+    const edited = applyStyleGuide(written, ctx.guide);
+    const out = edited.draft;
+    await logAgent(d.jobId, "writer", `${d.requestKey}:agent`, version > 1 ? `Revised the draft (version ${version})` : "Wrote the first draft", [
+      out.title,
+      `${out.bodyMarkdown.split(/\s+/).length} words, ${out.claims.length} cited claims`,
+      ...(ctx.persona ? [`Written for ${ctx.persona.name.toLowerCase()}: ${ctx.persona.description}`] : []),
+      ...(ctx.workflow ? [`Workflow: ${ctx.workflow.name}`] : []),
+      ...(ctx.profile.voice ? [`Briefed with your voice profile (${ctx.profile.voice.sampleCount} samples)`] : []),
+    ], !isLive("naive"));
+    await logAgent(d.jobId, "editor", `${d.requestKey}:editor`, edited.changes.length ? `Applied your style guide (${edited.changes.length} change${edited.changes.length > 1 ? "s" : ""})` : "Checked the draft against your style guide", edited.changes.length ? edited.changes : [ctx.guide.preferredTerms.length || ctx.guide.bannedPhrases.length ? "Nothing to change" : "No style guide set yet"]);
     const [draft] = await db
       .insert(drafts)
       .values({
@@ -427,7 +476,16 @@ registerHandler("review", {
     const srcs = await jobSources(job.id);
     const maxCycles = env().MAX_REVISION_CYCLES;
     const guard = runGuardrails({ job, draft, sources: srcs, revisionCycles: job.revisionCycles, maxRevisionCycles: maxCycles });
-    let decision = decideOutcome({ agentOutcome: agent.outcome ?? null, findings: [...guard, ...agentFindings], job, revisionCycles: job.revisionCycles, maxRevisionCycles: maxCycles });
+    const ctx = await studioContext(job);
+    let seq = 0;
+    const styleFindings = styleGuideFindings(draft.bodyMarkdown, ctx.guide, (k) => `${k}-${d.id.slice(0, 8)}-${seq++}`);
+    let decision = decideOutcome({ agentOutcome: agent.outcome ?? null, findings: [...guard, ...styleFindings, ...agentFindings], job, revisionCycles: job.revisionCycles, maxRevisionCycles: maxCycles });
+    // A version the founder shaped (their edit, or a highlight-and-ask edit)
+    // is never rewritten by the writer over matters of taste: soft findings
+    // become notes on the review page instead.
+    if (draft.author !== "writer" && decision.outcome === "NEEDS_REVISION" && decision.findings.every((f) => f.resolved || f.severity !== "blocking" || isSoftFinding(f))) {
+      decision = { ...decision, outcome: "READY_FOR_APPROVAL" };
+    }
 
     // Was this draft waiting on the founder? Then an answer must be written in
     // before approval, whatever the checks say — and that pass is free.
@@ -436,15 +494,21 @@ registerHandler("review", {
     if (answeredFounder) decision = { ...decision, outcome: "NEEDS_REVISION" };
 
     const summary = agent.summary ?? `${decision.findings.filter((f) => f.severity === "blocking" && !f.resolved).length} blocking finding(s)`;
+    const scores = scoreDraft({ draft, sources: srcs, findings: decision.findings, voice: ctx.profile.voice });
     const [review] = await db
       .insert(reviews)
-      .values({ jobId: job.id, draftId: draft.id, outcome: decision.outcome, summary, findings: decision.findings, founderQuestions: decision.founderQuestions })
+      .values({ jobId: job.id, draftId: draft.id, outcome: decision.outcome, summary, findings: decision.findings, founderQuestions: decision.founderQuestions, scores })
       .returning();
+    const checks = guard.filter((f) => !f.id.startsWith("style-"));
+    const cited = new Set([...draft.bodyMarkdown.matchAll(/\[(S\d+)\]/g)].map((m) => m[1])).size;
+    await logAgent(job.id, "fact_checker", `${d.requestKey}:fact`, `Checked ${draft.claims.length} claims and ${cited} citations against the sources`, checks.length ? checks.slice(0, 6).map((f) => `${f.resolved ? "Resolved" : f.severity === "blocking" ? "Flagged" : "Noted"}: ${f.claim.slice(0, 140)}`) : ["No unsupported figures, overreaching scope, unknown citations or private names"]);
+    await logAgent(job.id, "reviewer", `${d.requestKey}:review`, `${OUTCOME_LABEL[decision.outcome]} · quality ${scores.overall}/100`, [summary.slice(0, 200), ...scores.suggestions.slice(0, 3)], !isLive("naive"));
 
     switch (decision.outcome) {
       case "READY_FOR_APPROVAL": {
         const moved = await transition(job.id, ["REVIEWING"], "READY_FOR_APPROVAL", null, { openQuestions: [] });
-        if (moved) await queueMessage(moved, "review_link", `${job.id}:review_link:${draft.id}`, templates.review_link(moved));
+        const notes = decision.findings.filter((f) => !f.resolved && f.severity === "blocking" && isSoftFinding(f)).map((f) => f.claim);
+        if (moved) await queueMessage(moved, "review_link", `${job.id}:review_link:${draft.id}`, templates.review_link(moved, { scores, notes, corrections: draft.corrections }));
         break;
       }
       case "NEEDS_REVISION": {
@@ -479,3 +543,25 @@ registerHandler("review", {
     await failJob(d.jobId, `Review failed: ${reason}`);
   },
 });
+
+const OUTCOME_LABEL: Record<string, string> = {
+  READY_FOR_APPROVAL: "Ready for your approval",
+  NEEDS_REVISION: "Sent back for revision",
+  NEEDS_FOUNDER_INPUT: "Needs one answer from you",
+  UNABLE_TO_COMPLETE: "Stopped: couldn't clear the draft",
+};
+
+/** What the writer needs to know about this founder beyond the brief. */
+function studioBrief(ctx: Awaited<ReturnType<typeof studioContext>>): string | null {
+  const parts = [
+    ctx.profile.brand?.name ? `Company: ${ctx.profile.brand.name}${ctx.profile.brand.tagline ? ` (${ctx.profile.brand.tagline})` : ""}.` : null,
+    ctx.persona ? `Reader persona: ${ctx.persona.name} (${ctx.persona.description}). They care about: ${ctx.persona.cares}. Avoid: ${ctx.persona.avoid}.` : null,
+    ctx.workflow
+      ? `Workflow "${ctx.workflow.name}": ${ctx.workflow.instructions}${ctx.workflow.sections.length ? `\nUse these sections, in order: ${ctx.workflow.sections.map((x) => `"${x}"`).join(", ")} (then ## Sources).` : ""}`
+      : null,
+    ctx.profile.voice ? voiceBrief(ctx.profile.voice) : null,
+    styleBrief(ctx.guide),
+    ctx.memories.length ? `Editorial memory (corrections and facts the founder gave on earlier articles; apply them):\n${ctx.memories.slice(0, 15).map((m) => `- ${m.text}`).join("\n")}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join("\n\n") : null;
+}

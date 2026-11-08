@@ -30,6 +30,21 @@ With no credentials every integration runs as a **labelled simulation** (never a
 7. **G — publish.** The live page is fetched back and must carry the approved hash; the URL is emailed.
 8. **H — phone check.** The published article is checked as it renders on a phone.
 
+## Studio
+
+Signed-in founders get a workspace at `/studio` (sign up at `/signup` with email or Google; in development, "Open the demo workspace" seeds a sample founder and runs a real article through the pipeline):
+
+- **Onboarding**: paste a website, upload a company PDF or paste text; the brand (name, tagline, products, audience, key terms, colours, logo) and a first voice profile are captured.
+- **Brand & voice**: writing samples teach a measurable voice profile; style guide (preferred terms, banned phrases, tone, formatting); audience personas.
+- **Knowledge & memory**: company facts, products, opinions, earlier articles and approved sources become citable sources in research. Corrections like "use teams instead of customers" are remembered and applied to every later article.
+- **Agent desk**: Researcher, Writer, Editor, Fact-checker and Reviewer each log what they did; custom agents run saved workflows on a cadence and fill the calendar.
+- **Quality score** on every reviewed draft (accuracy, sources, originality, voice match, readability, search) and in the approval email.
+- **Highlight & ask** on the review page: select a passage, say what to change; the new version goes back through fact-check.
+- **Version history** with diffs, **calendar**, **insights** (first-party views and reads, next topics, refresh candidates, AI-search readiness), **Idea Lab** (Viral Twin, Audience Reaction Panel, Historical Analogs, Hook Tournament, Trend Timing Radar, Controversy vs. Credibility, fed by your post history and a swipe file captured with a bookmarklet).
+- **Connections**: X, LinkedIn and Instagram via OAuth with auto-post (approval still required); WordPress, Ghost and Webflow publishing.
+
+Test payments: `/test-payment` has Stripe's test card, a bookmarklet and a Chrome extension that fills Stripe Checkout in test mode (`cs_test_` sessions only).
+
 ## Go live
 
 Copy `.env.example` to `.env.local` and fill in what you have. Each integration switches from simulated to live independently; `/status` shows which is which.

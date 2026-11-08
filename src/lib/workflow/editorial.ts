@@ -134,11 +134,13 @@ export function writePrompt(args: {
   evidence: Array<{ sourceRef: string; passage: string; supports: string; kind: string }>;
   findings: Finding[];
   previousBody: string | null;
+  studio?: string | null;
 }): string {
   const { job } = args;
   return [
     args.previousBody ? "Revise the draft below to resolve every open finding. Keep everything else." : "Write the article.",
     briefBlock(job),
+    args.studio ? `About this founder (from their FounderDesk Studio):\n${args.studio}` : "",
     `Founder notes (the founder's own voice and observations):\n${job.seedText.slice(0, 6000)}`,
     `Founder replies to our questions:\n${repliesBlock(job.founderReplies)}`,
     `Evidence:\n${args.evidence.map((e) => `- [${e.sourceRef}] (${e.kind}) "${e.passage}" — ${e.supports}`).join("\n") || "none"}`,
@@ -301,7 +303,8 @@ export function runGuardrails(ctx: GuardrailContext): Finding[] {
     }
   }
 
-  const external = sources.filter((s) => s.kind !== "founder_note" && s.status === "fetched" && s.content);
+  // The founder's own notes and knowledge-base facts are their claims, not external evidence.
+  const external = sources.filter((s) => s.kind !== "founder_note" && s.kind !== "knowledge" && s.status === "fetched" && s.content);
   const externalSentences = external.flatMap((s) => sentences(s.content!).map((text) => ({ ref: s.ref, title: s.title, text, kw: keywords(text) })));
   const vouched = new Set<string>();
   for (const r of job.founderReplies) for (const f of figures(r.text)) if (/\b(internal|our|measured|confirmed|attached)\b/i.test(r.text)) vouched.add(f);

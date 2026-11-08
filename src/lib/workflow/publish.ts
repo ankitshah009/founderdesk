@@ -3,8 +3,11 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { approvals, drafts, images, jobs, publications, type Dispatch, type Job, type MobileCheck, type Publication } from "@/lib/db/schema";
-import { env, isLive } from "@/lib/env";
-import { SOCIAL, renderAnnouncement, type SocialDestination } from "@/lib/destinations/social";
+import { isLive } from "@/lib/env";
+import { CMS, CMS_SIMULATED_DETAIL, articleHtml, cmsSimulated, isCms, simulatedCmsPost } from "@/lib/destinations/cms";
+import { SIMULATED_DETAIL, SOCIAL, postInstagram, renderAnnouncement, simulatedPost, verifyInstagram, type SocialCredentials, type SocialDestination } from "@/lib/destinations/social";
+import { ReconnectError, resolveCredentials } from "@/lib/social/accounts";
+import { approvalDestinations, instagramViaMobileRun } from "@/lib/social/destinations";
 import * as mobilerun from "@/lib/integrations/mobilerun";
 import { articleSlug } from "@/lib/brief";
 import { draftContentHash } from "@/lib/security";
@@ -15,10 +18,8 @@ import { enqueue, getJob, latestDraft, reviewForDraft, transition } from "./stor
 
 export class GateError extends Error {}
 
-/** Instagram posting runs on the Mobile Run phone where the account is signed in. */
-export function instagramConnected(): boolean {
-  return isLive("mobilerun") && env().INSTAGRAM_VIA_MOBILERUN === "true";
-}
+/** Instagram posting on the Mobile Run phone where the operator's account is signed in (fallback when the founder hasn't connected Instagram). */
+export const instagramConnected = instagramViaMobileRun;
 
 /* ── Founder actions (called from the review page and MCP) ─────────────────── */
 
@@ -46,8 +47,8 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
   const review = await reviewForDraft(draft.id);
   if (review?.outcome !== "READY_FOR_APPROVAL") throw new GateError("This version has not passed review.");
 
-  const allowed = new Set<string>(["web", ...Object.values(SOCIAL).filter((a) => a.connected()).map((a) => a.id)]);
-  if (instagramConnected()) allowed.add("instagram");
+  // Only destinations that are connected for this founder (their accounts, the operator's env accounts, CMSs).
+  const allowed = new Set<string>(["web", ...(await approvalDestinations(job.founderEmail)).map((d) => d.id)]);
   const destinations = ["web", ...args.destinations.filter((d) => d !== "web" && allowed.has(d))];
   const imageIds = [...new Set(args.imageIds ?? [])];
   const imagesHash = await hashImages(job.id, imageIds);
@@ -154,6 +155,60 @@ async function webPublication(jobId: string): Promise<Publication | null> {
 
 /* ── publish ───────────────────────────────────────────────────────────────── */
 
+type Calls = { post(): Promise<{ externalId: string; url: string | null }>; verify(externalId: string): Promise<{ ok: boolean; detail: string }> };
+
+/** Founder account → operator env token → none. A failed refresh is not worth retrying. */
+async function credentialsFor(email: string, provider: "x" | "linkedin" | "instagram"): Promise<SocialCredentials | null> {
+  try {
+    return await resolveCredentials(email, provider);
+  } catch (err) {
+    if (err instanceof ReconnectError) throw new PermanentError(err.message);
+    throw err;
+  }
+}
+
+/** Simulated accounts record a publication and never touch the network. */
+function socialCalls(creds: SocialCredentials, articleUrl: string, post: Calls["post"], verify: Calls["verify"]): Calls {
+  if (creds.simulated) return { post: async () => simulatedPost(creds.provider, articleUrl), verify: async () => ({ ok: true, detail: SIMULATED_DETAIL }) };
+  const as = creds.handle ? ` · posted as ${creds.handle}` : creds.source === "env" ? " · posted from the FounderDesk account" : "";
+  return { post, verify: async (id) => { const r = await verify(id); return { ...r, detail: `${r.detail}${as}` }; } };
+}
+
+/**
+ * Non-idempotent external post: write the `publishing` row first, post, record
+ * the external id, then read the post back by id. A retry that finds the row
+ * without an external id stops for a human; one that finds an id only re-verifies.
+ */
+async function postOnce(
+  a: { db: Awaited<ReturnType<typeof getDb>>; job: Job; draft: { id: string; contentHash: string }; approval: { id: string }; destination: string; label: string },
+  prepare: () => Promise<Calls>,
+) {
+  const { db, job, draft, approval, destination, label } = a;
+  const [existing] = await db.select().from(publications).where(and(eq(publications.jobId, job.id), eq(publications.destination, destination))).limit(1);
+  if (existing?.status === "published") return { done: { publicationId: existing.id, url: existing.url } };
+  if (existing && (!existing.externalId || existing.externalId.startsWith("mobilerun:"))) {
+    throw new PermanentError(`An earlier ${label} post attempt may have gone through. Check the account before retrying.`);
+  }
+  const calls = await prepare();
+  let row = existing;
+  let posted: { externalId: string; url: string | null };
+  if (existing?.externalId) {
+    posted = { externalId: existing.externalId, url: existing.url };
+  } else {
+    [row] = await db
+      .insert(publications)
+      .values({ jobId: job.id, draftId: draft.id, approvalId: approval.id, destination, contentHash: draft.contentHash, status: "publishing" })
+      .returning();
+    posted = await calls.post();
+    await db.update(publications).set({ externalId: posted.externalId, url: posted.url }).where(eq(publications.id, row!.id));
+  }
+  const check = await calls.verify(posted.externalId);
+  const verification = { ok: check.ok, checkedAt: new Date().toISOString(), detail: check.detail };
+  await db.update(publications).set({ verification, status: check.ok ? "published" : "verify_failed" }).where(eq(publications.id, row!.id));
+  return { done: { publicationId: row!.id, url: posted.url, verification } };
+}
+
+
 registerHandler("publish", {
   async start(d: Dispatch) {
     const job = await getJob(d.jobId);
@@ -180,26 +235,48 @@ registerHandler("publish", {
       return { done: { publicationId: pub.id, url: pub.url, verification } };
     }
 
+    const web = await webPublication(job.id);
+    const post = { db, job, draft, approval, destination };
+
+    if (isCms(destination)) {
+      const adapter = CMS[destination];
+      if (web?.status !== "published") throw new Error("Waiting for the web article to be published");
+      return postOnce({ ...post, label: adapter.label }, async () => {
+        if (adapter.configured()) {
+          const article = { title: draft.title, dek: draft.dek, html: articleHtml(draft, web.url!), slug: web.slug ?? articleSlug(draft.title, job.id), canonicalUrl: web.url! };
+          return { post: () => adapter.publish(article), verify: (id) => adapter.verify(id) };
+        }
+        if (cmsSimulated(destination)) return { post: async () => simulatedCmsPost(destination, web.url!), verify: async () => ({ ok: true, detail: CMS_SIMULATED_DETAIL }) };
+        throw new PermanentError(`${adapter.label} is not connected`);
+      });
+    }
+
     if (destination === "instagram") {
-      if (!instagramConnected()) throw new PermanentError("Instagram is not connected on the Mobile Run device");
-      const web = await webPublication(job.id);
+      const creds = await credentialsFor(job.founderEmail, "instagram");
+      if (!creds && !instagramConnected()) throw new PermanentError("Instagram is not connected");
       if (web?.status !== "published") throw new Error("Waiting for the web article to be published");
       const ig = draft.variants.instagram;
       if (!ig) throw new PermanentError("This draft has no Instagram version");
       const imgs = approval.imageIds.map((id) => ({ id }));
       if (!imgs.length) throw new PermanentError("Instagram needs at least one image — add images before approving Instagram");
+      const base = links.article("").replace(/\/a\/$/, "");
+      const imageUrls = imgs.slice(0, 10).map((i) => `${base}/api/images/${i.id}`);
+      if (creds) {
+        // The founder's own business/creator account via the Instagram Graph API.
+        return postOnce({ ...post, label: "Instagram" }, async () => socialCalls(creds, web.url!, () => postInstagram(creds, imageUrls, ig.caption), (id) => verifyInstagram(creds, id)));
+      }
+      // Fallback: the operator's account on the Mobile Run phone.
       const [existing] = await db.select().from(publications).where(and(eq(publications.jobId, job.id), eq(publications.destination, "instagram"))).limit(1);
       if (existing?.status === "published") return { done: { publicationId: existing.id, url: existing.url } };
       if (existing && !existing.externalId) {
         throw new PermanentError("An earlier Instagram post attempt may have gone through. Check the account before retrying.");
       }
-      const base = links.article("").replace(/\/a\/$/, "");
       const [row] = await db
         .insert(publications)
         .values({ jobId: job.id, draftId: draft.id, approvalId: approval.id, destination, contentHash: draft.contentHash, status: "publishing" })
         .returning();
       const task = await mobilerun.runTask({
-        task: mobilerun.instagramPostTask(imgs.slice(0, 10).map((i) => `${base}/api/images/${i.id}`), ig.slides, ig.caption),
+        task: mobilerun.instagramPostTask(imageUrls, ig.slides, ig.caption),
         idempotencyKey: idempotencyKey(d),
         outputSchema: mobilerun.INSTAGRAM_POST_SCHEMA,
         maxSteps: 80,
@@ -210,14 +287,8 @@ registerHandler("publish", {
 
     // Social announcement: needs the live article URL first.
     const adapter = SOCIAL[destination as SocialDestination];
-    if (!adapter?.connected()) throw new PermanentError(`${destination} is not connected`);
-    const web = await webPublication(job.id);
+    if (!adapter) throw new PermanentError(`Unknown destination ${destination}`);
     if (web?.status !== "published") throw new Error("Waiting for the web article to be published");
-    const [existing] = await db.select().from(publications).where(and(eq(publications.jobId, job.id), eq(publications.destination, destination))).limit(1);
-    if (existing?.status === "published") return { done: { publicationId: existing.id, url: existing.url } };
-    if (existing && !existing.externalId) {
-      throw new PermanentError(`An earlier ${adapter.label} post attempt may have gone through. Check the account before retrying.`);
-    }
     const variant =
       destination === "x"
         ? approval.option === "single"
@@ -229,17 +300,11 @@ registerHandler("publish", {
     const posts = Array.isArray(variant)
       ? variant.map((t) => renderAnnouncement(t, web.url!, adapter.maxLength))
       : [renderAnnouncement(variant ?? draft.announcement, web.url!, adapter.maxLength)];
-    const text = posts[0]!;
-    const [row] = await db
-      .insert(publications)
-      .values({ jobId: job.id, draftId: draft.id, approvalId: approval.id, destination, contentHash: draft.contentHash, status: "publishing" })
-      .returning();
-    const posted = await adapter.post(text, posts.slice(1));
-    await db.update(publications).set({ externalId: posted.externalId, url: posted.url }).where(eq(publications.id, row!.id));
-    const check = await adapter.verify(posted.externalId);
-    const verification = { ok: check.ok, checkedAt: new Date().toISOString(), detail: check.detail };
-    await db.update(publications).set({ verification, status: check.ok ? "published" : "verify_failed" }).where(eq(publications.id, row!.id));
-    return { done: { publicationId: row!.id, url: posted.url, verification } };
+    return postOnce({ ...post, label: adapter.label }, async () => {
+      const creds = await credentialsFor(job.founderEmail, adapter.id);
+      if (!creds) throw new PermanentError(`${adapter.label} is not connected`);
+      return socialCalls(creds, web.url!, () => adapter.post(creds, posts[0]!, posts.slice(1)), (id) => adapter.verify(creds, id));
+    });
   },
   pollEveryMs: 10_000,
   // Only Instagram (via Mobile Run) is asynchronous: wait for the phone task.

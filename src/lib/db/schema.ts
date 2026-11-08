@@ -62,6 +62,18 @@ export type Finding = {
 
 export type Claim = { text: string; sourceIds: string[] };
 
+export type QualityScores = {
+  overall: number;
+  accuracy: number;
+  sources: number;
+  originality: number;
+  /** Null when the founder has no voice profile to compare against. */
+  voice: number | null;
+  readability: number;
+  search: number;
+  suggestions: string[];
+};
+
 /** Platform-native versions of the announcement, written and approved per channel. */
 export type ChannelVariants = {
   x?: string[];
@@ -104,6 +116,9 @@ export const jobs = pgTable(
     founderReplies: jsonb("founder_replies").$type<FounderReply[]>().notNull().default([]),
     openQuestions: jsonb("open_questions").$type<string[]>().notNull().default([]),
     destinations: jsonb("destinations").$type<string[]>().notNull().default(["web"]),
+    /** Studio: the audience persona and saved workflow this article was written for. */
+    personaId: text("persona_id"),
+    workflowId: uuid("workflow_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -122,7 +137,7 @@ export const sources = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
     ref: text("ref").notNull(), // short stable label used in prompts and citations: S1, S2…
-    kind: text("kind").$type<"founder_url" | "search_result" | "attachment" | "founder_note">().notNull(),
+    kind: text("kind").$type<"founder_url" | "search_result" | "attachment" | "founder_note" | "knowledge">().notNull(),
     url: text("url"),
     title: text("title"),
     snippet: text("snippet"),
@@ -158,7 +173,7 @@ export const drafts = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
-    author: text("author").$type<"writer" | "founder_edit">().notNull(),
+    author: text("author").$type<"writer" | "founder_edit" | "ai_edit">().notNull(),
     title: text("title").notNull(),
     dek: text("dek").notNull(),
     bodyMarkdown: text("body_markdown").notNull(),
@@ -182,6 +197,8 @@ export const reviews = pgTable(
     summary: text("summary").notNull(),
     findings: jsonb("findings").$type<Finding[]>().notNull().default([]),
     founderQuestions: jsonb("founder_questions").$type<string[]>().notNull().default([]),
+    /** Quality score of the reviewed draft, computed by the app (see lib/studio/quality). */
+    scores: jsonb("scores").$type<QualityScores | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("reviews_job_idx").on(t.jobId)],
@@ -242,6 +259,8 @@ export const publications = pgTable(
     status: text("status").$type<"publishing" | "published" | "verify_failed" | "failed">().notNull(),
     verification: jsonb("verification").$type<Verification | null>(),
     mobileCheck: jsonb("mobile_check").$type<MobileCheck | null>(),
+    views: integer("views").notNull().default(0),
+    reads: integer("reads").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -277,6 +296,7 @@ export const DISPATCH_KINDS = [
   "publish",
   "mobile_check",
   "image",
+  "revise_selection",
 ] as const;
 export type DispatchKind = (typeof DISPATCH_KINDS)[number];
 
@@ -433,3 +453,292 @@ export const images = pgTable(
 );
 
 export type ImageRow = typeof images.$inferSelect;
+
+/* ── Studio: the founder's workspace ─────────────────────────────────────────
+ * Everything that persists across articles for one founder (keyed by email,
+ * the same identity the passwordless session proves): their voice, style
+ * guide, personas, knowledge base, editorial memory, saved workflows and
+ * custom agents, and the editorial calendar.
+ */
+
+export type VoiceProfile = {
+  sampleCount: number;
+  words: number;
+  avgSentenceLength: number;
+  sentenceLengthSpread: number;
+  contractionRate: number;
+  firstPersonRate: number;
+  questionRate: number;
+  exclamationRate: number;
+  readingEase: number;
+  signaturePhrases: string[];
+  traits: string[];
+  analyzedAt: string;
+};
+
+export type StyleGuide = {
+  /** "use" replaces every phrase in "insteadOf". */
+  preferredTerms: Array<{ use: string; insteadOf: string[] }>;
+  bannedPhrases: string[];
+  tone: string;
+  formatting: string[];
+};
+
+export type Persona = {
+  id: string;
+  name: string;
+  /** Who they are, in the founder's words: written into the brief as the audience. */
+  description: string;
+  cares: string;
+  avoid: string;
+};
+
+export type Brand = {
+  name: string | null;
+  tagline: string | null;
+  description: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  colors: string[];
+  audience: string | null;
+  products: string[];
+  keywords: string[];
+  /** Where the brand was read from: a URL, a file name, or "pasted text". */
+  sources: string[];
+  capturedAt: string;
+};
+
+export const profiles = pgTable("profiles", {
+  email: text("email").primaryKey(),
+  displayName: text("display_name"),
+  company: text("company"),
+  brand: jsonb("brand").$type<Brand | null>(),
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+  voice: jsonb("voice").$type<VoiceProfile | null>(),
+  styleGuide: jsonb("style_guide").$type<StyleGuide>().notNull().default({ preferredTerms: [], bannedPhrases: [], tone: "", formatting: [] }),
+  personas: jsonb("personas").$type<Persona[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const KNOWLEDGE_KINDS = ["company", "product", "opinion", "article", "source", "sample"] as const;
+export type KnowledgeKind = (typeof KNOWLEDGE_KINDS)[number];
+
+export const knowledgeItems = pgTable(
+  "knowledge_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    kind: text("kind").$type<KnowledgeKind>().notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    url: text("url"),
+    /** Pinned items go into every article's research, not only when relevant. */
+    pinned: boolean("pinned").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("knowledge_owner_idx").on(t.ownerEmail, t.kind)],
+);
+
+export const memories = pgTable(
+  "memories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    kind: text("kind").$type<"preference" | "fact" | "correction">().notNull(),
+    text: text("text").notNull(),
+    origin: text("origin").$type<"edit_request" | "founder_reply" | "manual">().notNull(),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("memories_owner_idx").on(t.ownerEmail)],
+);
+
+export const CADENCES = ["none", "weekly", "biweekly", "monthly"] as const;
+export type Cadence = (typeof CADENCES)[number];
+
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    name: text("name").notNull(),
+    /** "format": a reusable article shape. "agent": a recurring custom agent that owns a format. */
+    kind: text("kind").$type<"format" | "agent">().notNull(),
+    agentTitle: text("agent_title"),
+    description: text("description").notNull().default(""),
+    instructions: text("instructions").notNull().default(""),
+    sections: jsonb("sections").$type<string[]>().notNull().default([]),
+    personaId: text("persona_id"),
+    channels: jsonb("channels").$type<string[]>().notNull().default([]),
+    cadence: text("cadence").$type<Cadence>().notNull().default("none"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("workflows_owner_idx").on(t.ownerEmail)],
+);
+
+export const calendarEntries = pgTable(
+  "calendar_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    title: text("title").notNull(),
+    notes: text("notes").notNull().default(""),
+    /** Planned publish day, YYYY-MM-DD. */
+    date: text("date").notNull(),
+    workflowId: uuid("workflow_id").references(() => workflows.id, { onDelete: "cascade" }),
+    personaId: text("persona_id"),
+    status: text("status").$type<"planned" | "ordered" | "published" | "skipped">().notNull().default("planned"),
+    origin: text("origin").$type<"founder" | "cadence" | "performance" | "refresh">().notNull().default("founder"),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("calendar_owner_idx").on(t.ownerEmail, t.date),
+    // A recurring agent plans each slot once.
+    uniqueIndex("calendar_workflow_date_idx").on(t.workflowId, t.date).where(sql`${t.workflowId} is not null`),
+  ],
+);
+
+export const AGENT_ROLES = ["researcher", "writer", "editor", "fact_checker", "reviewer"] as const;
+export type AgentRole = (typeof AGENT_ROLES)[number];
+
+/** What each agent on the desk did for an order — the orchestration log. */
+export const agentRuns = pgTable(
+  "agent_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+    role: text("role").$type<AgentRole>().notNull(),
+    /** Stable per unit of work, so a re-applied dispatch never logs twice. */
+    requestKey: text("request_key").notNull(),
+    action: text("action").notNull(),
+    detail: jsonb("detail").$type<string[]>().notNull().default([]),
+    simulated: boolean("simulated").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("agent_runs_key_idx").on(t.requestKey), index("agent_runs_job_idx").on(t.jobId, t.createdAt)],
+);
+
+/** Highlight-and-ask: a founder's instruction about one passage of a draft. */
+export const editRequests = pgTable(
+  "edit_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+    draftId: uuid("draft_id").notNull().references(() => drafts.id, { onDelete: "cascade" }),
+    selection: text("selection").notNull(),
+    instruction: text("instruction").notNull(),
+    status: text("status").$type<"pending" | "applied" | "failed" | "superseded">().notNull().default("pending"),
+    resultDraftId: uuid("result_draft_id").references(() => drafts.id, { onDelete: "set null" }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("edit_requests_job_idx").on(t.jobId)],
+);
+
+/** Daily reader counts for a published article (first-party, counted by our own page). */
+export const articleDaily = pgTable(
+  "article_daily",
+  {
+    publicationId: uuid("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    views: integer("views").notNull().default(0),
+    reads: integer("reads").notNull().default(0),
+  },
+  (t) => [uniqueIndex("article_daily_pk").on(t.publicationId, t.day)],
+);
+
+export type Profile = typeof profiles.$inferSelect;
+export type KnowledgeItem = typeof knowledgeItems.$inferSelect;
+export type Memory = typeof memories.$inferSelect;
+export type Workflow = typeof workflows.$inferSelect;
+export type CalendarEntry = typeof calendarEntries.$inferSelect;
+export type AgentRun = typeof agentRuns.$inferSelect;
+export type EditRequest = typeof editRequests.$inferSelect;
+
+/* ── Social accounts (per founder) ──────────────────────────────────────────
+ * OAuth connections the founder makes from the Studio. Tokens are encrypted
+ * at rest (AES-256-GCM, key derived from APP_SECRET). "simulated" accounts
+ * exist only where the provider's OAuth app is not configured; posting through
+ * them is recorded and labelled, never sent.
+ */
+
+export const SOCIAL_PROVIDERS = ["x", "linkedin", "instagram"] as const;
+export type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
+
+export const socialAccounts = pgTable(
+  "social_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    provider: text("provider").$type<SocialProvider>().notNull(),
+    externalUserId: text("external_user_id").notNull(),
+    handle: text("handle").notNull(),
+    accessTokenEnc: text("access_token_enc"),
+    refreshTokenEnc: text("refresh_token_enc"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    scopes: text("scopes"),
+    simulated: boolean("simulated").notNull().default(false),
+    /** Preselect this account at approval, so approved articles are announced without another step. */
+    autoPost: boolean("auto_post").notNull().default(true),
+    status: text("status").$type<"connected" | "expired" | "revoked">().notNull().default("connected"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("social_accounts_owner_provider_idx").on(t.ownerEmail, t.provider)],
+);
+
+/* ── Idea Lab: the founder's post history and swipe file ─────────────────── */
+
+export const POST_PLATFORMS = ["x", "linkedin", "instagram", "tiktok", "newsletter", "blog", "other"] as const;
+export type PostPlatform = (typeof POST_PLATFORMS)[number];
+
+export const socialPosts = pgTable(
+  "social_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    /** "me" for the founder's own posts; otherwise the creator's handle (swipe file). */
+    author: text("author").notNull(),
+    platform: text("platform").$type<PostPlatform>().notNull(),
+    url: text("url"),
+    text: text("text").notNull(),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    impressions: integer("impressions"),
+    likes: integer("likes").notNull().default(0),
+    comments: integer("comments").notNull().default(0),
+    shares: integer("shares").notNull().default(0),
+    /** Account size when posted, for normalising engagement across creators. */
+    followers: integer("followers"),
+    capturedVia: text("captured_via").$type<"manual" | "csv" | "bookmarklet" | "x_api" | "published">().notNull().default("manual"),
+    externalId: text("external_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("social_posts_owner_idx").on(t.ownerEmail, t.author), uniqueIndex("social_posts_ext_idx").on(t.ownerEmail, t.platform, t.externalId)],
+);
+
+export const ideas = pgTable(
+  "ideas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerEmail: text("owner_email").notNull(),
+    title: text("title").notNull(),
+    notes: text("notes").notNull().default(""),
+    platform: text("platform").$type<PostPlatform>().notNull().default("linkedin"),
+    hooks: jsonb("hooks").$type<string[]>().notNull().default([]),
+    status: text("status").$type<"exploring" | "planned" | "ordered" | "archived">().notNull().default("exploring"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ideas_owner_idx").on(t.ownerEmail)],
+);
+
+export type SocialAccount = typeof socialAccounts.$inferSelect;
+export type SocialPost = typeof socialPosts.$inferSelect;
+export type Idea = typeof ideas.$inferSelect;

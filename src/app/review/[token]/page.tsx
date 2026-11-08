@@ -9,8 +9,7 @@ import { Markdown } from "@/components/markdown";
 import { IN_PROGRESS, StageChip } from "@/components/stages";
 import { ButtonLink, Chip, MonoLabel } from "@/components/ui";
 import { articleSlug } from "@/lib/brief";
-import { connectedSocial } from "@/lib/destinations/social";
-import { instagramConnected } from "@/lib/workflow/publish";
+import { approvalDestinations } from "@/lib/social/destinations";
 import { links } from "@/lib/links";
 import { verifyLink } from "@/lib/security";
 import { orderView } from "@/lib/views";
@@ -19,7 +18,11 @@ import { GenerateButton } from "./images-panel";
 import { declineImages } from "@/app/actions";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { images } from "@/lib/db/schema";
+import { agentRuns, images } from "@/lib/db/schema";
+import { QualityCard } from "@/components/review/quality-card";
+import { AgentDesk } from "@/components/review/agent-desk";
+import { HighlightEditor } from "@/components/review/highlight-editor";
+import { asc } from "drizzle-orm";
 import { isLive } from "@/lib/env";
 import { stripe } from "@/lib/integrations/stripe";
 import { grantImageCredits } from "@/lib/workflow/images";
@@ -63,6 +66,7 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
     .from(images)
     .where(eq(images.jobId, jobId))
     .orderBy(desc(images.createdAt));
+  const runs = await db.select().from(agentRuns).where(eq(agentRuns.jobId, jobId)).orderBy(asc(agentRuns.createdAt));
   const { job, draft, review, sources, web } = v;
   const ready = job.stage === "READY_FOR_APPROVAL" && review?.outcome === "READY_FOR_APPROVAL";
   const cited = new Set([...draft.bodyMarkdown.matchAll(/\[(S\d+)\]/g)].map((m) => m[1]!));
@@ -78,7 +82,7 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
           <div className="mb-8 flex flex-wrap items-center gap-2.5">
             <StageChip stage={job.stage} />
             <Chip>Version {draft.version}</Chip>
-            {draft.author === "founder_edit" ? <Chip tone="blue">Your edit</Chip> : null}
+            {draft.author === "founder_edit" ? <Chip tone="blue">Your edit</Chip> : draft.author === "ai_edit" ? <Chip tone="blue">Highlight &amp; ask edit</Chip> : null}
             <AutoRefresh tickUrl={`/api/orders/${job.id}/tick?t=${encodeURIComponent(token)}`} active={IN_PROGRESS.includes(job.stage) || jobImages.some((i) => i.status === "generating")} />
           </div>
           {ready && job.imageCredits === 0 && !job.imagesDeclined && !jobImages.length ? (
@@ -102,8 +106,10 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={`/api/images/${jobImages.find((i) => i.slot === "hero" && i.status === "ready")!.id}`} alt="" className="mt-8 aspect-[3/2] w-full rounded-2xl object-cover" />
           ) : null}
-          <div className="mt-8 border-t border-line pt-2">
-            <Markdown source={draft.bodyMarkdown} skipSources opts={{ citeHref: (ref) => `#src-${ref}` }} />
+          <div className="mt-8 border-t border-line pt-4">
+            <HighlightEditor token={token} draftId={draft.id} enabled={ready}>
+              <Markdown source={draft.bodyMarkdown} skipSources opts={{ citeHref: (ref) => `#src-${ref}` }} />
+            </HighlightEditor>
           </div>
           <div className="mt-12 space-y-4">
             <MonoLabel>How it will be announced</MonoLabel>
@@ -166,7 +172,7 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
             <>
               <p className="text-sm text-fg">Approve this version</p>
               <p className="mt-1 mb-5 text-xs text-muted">Read it through. Nothing is published until you approve.</p>
-              <ApprovePanel token={token} draftId={draft.id} contentHash={draft.contentHash} destination={links.article(articleSlug(draft.title, job.id))} readyImages={jobImages.filter((i) => i.status === "ready").map((i, idx, arr) => ({ id: i.id, slot: i.slot, preselected: arr.findIndex((j) => j.slot === i.slot) === idx }))} social={[...connectedSocial().map((a) => ({ id: a.id as string, label: a.label })), ...(instagramConnected() ? [{ id: "instagram", label: "Instagram (via Mobile Run)" }] : [])]} />
+              <ApprovePanel token={token} draftId={draft.id} contentHash={draft.contentHash} destination={links.article(articleSlug(draft.title, job.id))} readyImages={jobImages.filter((i) => i.status === "ready").map((i, idx, arr) => ({ id: i.id, slot: i.slot, preselected: arr.findIndex((j) => j.slot === i.slot) === idx }))} social={await approvalDestinations(job.founderEmail)} />
               <div className="mt-3">
                 <EditPanel token={token} draftId={draft.id} draft={draft} />
               </div>
@@ -189,6 +195,8 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
             </>
           )}
         </section>
+
+        {review?.scores ? <QualityCard scores={review.scores} /> : null}
 
         {draft.corrections.length || resolved.length ? (
           <section>
@@ -261,6 +269,13 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
           </section>
         ) : null}
 
+        {runs.length ? (
+          <section>
+            <MonoLabel className="mb-3">The desk on this article</MonoLabel>
+            <AgentDesk runs={runs} />
+          </section>
+        ) : null}
+
         <section>
           <MonoLabel className="mb-3">Sources beside claims</MonoLabel>
           <ul className="space-y-2.5">
@@ -272,7 +287,7 @@ async function Review({ params, searchParams }: PageProps<"/review/[token]">) {
                 </div>
                 {passages.get(s.ref) ? <p className="mt-2 border-l-2 border-white/15 pl-2.5 text-xs leading-relaxed text-muted">“{passages.get(s.ref)}”</p> : null}
                 <p className="mt-2 text-[11px] text-subtle">
-                  {s.kind === "attachment" ? "Your attachment" : s.kind === "founder_url" ? "Your link" : "Found in research"}
+                  {s.kind === "attachment" ? "Your attachment" : s.kind === "knowledge" || s.provider === "knowledge" ? "Your knowledge base" : s.kind === "founder_url" ? "Your link" : "Found in research"}
                   {s.url ? (
                     <>
                       {" · "}
