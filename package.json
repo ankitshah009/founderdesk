@@ -18,6 +18,8 @@
     "@electric-sql/pglite": "0.5.15",
     "@modelcontextprotocol/server": "^2.4.0",
     "@neondatabase/serverless": "1.2.0",
+    "@workos-inc/authkit-nextjs": "^4.6.3",
+    "@workos-inc/node": "^12.2.0",
     "drizzle-orm": "0.45.4",
     "lucide-react": "1.70.0",
     "mcp-handler": "2.3.1",

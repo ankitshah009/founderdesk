@@ -43,3 +43,5 @@ next-env.d.ts
 # local embedded Postgres
 .data/
 !.env.example
+.env.local.bak
+.env.local

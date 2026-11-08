@@ -329,6 +329,9 @@ export async function confirmSignInLink(form: FormData) {
 export async function signOutAction(form: FormData) {
   const { signOut } = await import("@/lib/auth");
   await signOut(form.get("everywhere") === "1");
+  // Also drop the WorkOS AuthKit cookie, so the next sign-in starts fresh.
+  const { cookies } = await import("next/headers");
+  (await cookies()).delete("wos-session");
   redirect("/signin");
 }
 

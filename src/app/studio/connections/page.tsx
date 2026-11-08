@@ -6,12 +6,10 @@ import { Card, PageHead, Skeleton } from "@/components/studio/shared";
 import { Button, Chip } from "@/components/ui";
 import { SOCIAL_PROVIDERS, type SocialAccount, type SocialProvider } from "@/lib/db/schema";
 import { CMS, CMS_DESTINATIONS, cmsSimulated } from "@/lib/destinations/cms";
-import { SOCIAL } from "@/lib/destinations/social";
 import { listAccounts } from "@/lib/social/accounts";
-import { instagramViaMobileRun } from "@/lib/social/destinations";
 import { PhoneConnect } from "@/components/studio/phone-connect";
 import { isLive } from "@/lib/env";
-import { PROVIDER_ENV, PROVIDER_LABEL, isProvider, providerConfigured, redirectUri } from "@/lib/social/oauth";
+import { PROVIDER_LABEL, isProvider } from "@/lib/social/oauth";
 import { studioSession } from "@/lib/studio/session";
 import { disconnect, toggleAutoPost } from "./actions";
 
@@ -30,11 +28,6 @@ const ROLE: Record<SocialProvider, string> = {
   linkedin: "Share approved articles to your feed",
   instagram: "Carousel from your approved images (business or creator account)",
 };
-
-function operatorFallback(p: SocialProvider): string | null {
-  if (p === "instagram") return instagramViaMobileRun() ? "Without your account, Instagram posts go out from the FounderDesk phone (Mobile Run)." : null;
-  return SOCIAL[p].connected() ? `Without your account, ${PROVIDER_LABEL[p]} announcements go out from the FounderDesk account.` : null;
-}
 
 const code = "rounded bg-white/[0.06] px-1 py-px font-mono text-[11px] text-fg-2";
 
@@ -60,7 +53,7 @@ async function Connections({ searchParams }: PageProps<"/studio/connections">) {
       <PageHead
         label="Connections"
         title="Where your articles go"
-        lede="Connect your own accounts so approved articles are announced as you. Nothing posts without your approval: accounts with auto-post on are simply pre-ticked on the approval screen."
+        lede="Sign in to X, LinkedIn and Instagram on your Mobile Run phone, then check them here. Approved posts go out from the phone as you. Nothing posts without your approval: accounts with auto-post on are simply pre-ticked on the approval screen."
       />
       {connected ? (
         <p role="status" className="mb-6 rounded-lg border border-green/30 bg-green/10 px-3 py-2.5 text-sm text-green">
@@ -119,8 +112,6 @@ const MOBILERUN_DEVICE_URL = "https://cloud.mobilerun.ai";
 function SocialCard({ provider, account }: { provider: SocialProvider; account: SocialAccount | null }) {
   const phone = isLive("mobilerun");
   const viaPhone = account?.via === "mobilerun";
-  const configured = providerConfigured(provider);
-  const fallback = operatorFallback(provider);
   const label = PROVIDER_LABEL[provider];
   const tone = account?.status === "connected" ? (account.simulated ? "blue" : "green") : account ? "amber" : "neutral";
   const status = !account ? "Not connected" : account.status === "connected" ? (account.simulated ? "Simulated" : "Connected") : account.status === "expired" ? "Expired" : "Revoked";
@@ -150,11 +141,6 @@ function SocialCard({ provider, account }: { provider: SocialProvider; account: 
             </Button>
           </form>
           <div className="flex flex-wrap gap-2">
-            {!viaPhone && (account.status !== "connected" || (account.simulated && configured)) ? (
-              <a href={`/api/oauth/${provider}/start`} className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-black hover:bg-white/90">
-                {account.simulated ? `Connect real ${label} account` : "Reconnect"}
-              </a>
-            ) : null}
             <form action={disconnect}>
               <input type="hidden" name="provider" value={provider} />
               <Button type="submit" variant="ghost" className="px-2.5 py-1.5 text-xs">
@@ -165,32 +151,13 @@ function SocialCard({ provider, account }: { provider: SocialProvider; account: 
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {phone ? <PhoneConnect provider={provider} label={label} deviceUrl={MOBILERUN_DEVICE_URL} /> : null}
-          <a href={`/api/oauth/${provider}/start`} className={phone ? "inline-block text-xs text-fg-2 underline underline-offset-2 hover:text-fg" : "inline-block rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-black hover:bg-white/90"}>
-            {phone ? `Or connect ${label} through its login page` : `Connect ${label}`}
-            {configured ? "" : " (simulated)"}
-          </a>
-          {fallback ? <p className="mt-3 text-[11px] text-subtle">{fallback}</p> : null}
+          {phone ? (
+            <PhoneConnect provider={provider} label={label} deviceUrl={MOBILERUN_DEVICE_URL} />
+          ) : (
+            <p className="text-xs text-muted">Posting from your Mobile Run phone isn&apos;t switched on for this workspace yet.</p>
+          )}
         </div>
       )}
-      <details className="mt-4 text-xs text-subtle">
-        <summary className="cursor-pointer text-muted hover:text-fg">{configured ? "Live OAuth is configured" : "What's needed to go live"}</summary>
-        <div className="mt-2 space-y-2 leading-relaxed">
-          <p>
-            Env:{" "}
-            {PROVIDER_ENV[provider].map((v, i) => (
-              <span key={v}>
-                {i ? ", " : ""}
-                <code className={code}>{v}</code>
-              </span>
-            ))}
-          </p>
-          <p>
-            Redirect URI to register: <code className={`${code} break-all`}>{redirectUri(provider)}</code>
-          </p>
-          {provider === "instagram" ? <p>Needs an Instagram business or creator account and the Instagram API with Instagram Login product.</p> : null}
-        </div>
-      </details>
     </Card>
   );
 }

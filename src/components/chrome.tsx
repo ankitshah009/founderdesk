@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { Wordmark } from "./brand";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { signOutAction } from "@/app/actions";
 import { ButtonLink } from "./ui";
 
 function SignedOutLinks() {
@@ -24,6 +25,11 @@ async function AccountLinks() {
     <>
       <Link href="/account" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg max-sm:hidden">Your orders</Link>
       <ButtonLink href="/studio" variant="secondary" className="max-sm:hidden" title={session.email}>Studio</ButtonLink>
+      <form action={signOutAction}>
+        <button type="submit" aria-label="Sign out" className="whitespace-nowrap px-2 text-sm text-fg-2 hover:text-fg" title={`Signed in as ${session.email}`}>
+          Sign out
+        </button>
+      </form>
     </>
   );
 }

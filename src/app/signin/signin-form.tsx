@@ -57,15 +57,34 @@ function GoogleButton({ next }: { next?: string }) {
   );
 }
 
-export function SignInForm({ next, mode = "signin", google = false }: { next?: string; mode?: "signin" | "signup"; google?: boolean }) {
+export function SignInForm({ next, mode = "signin", google = false, workos = false }: { next?: string; mode?: "signin" | "signup"; google?: boolean; workos?: boolean }) {
   const [sent, request, requesting] = useActionState<SignInState, FormData>(requestSignIn, null);
   const [verified, verify, verifying] = useActionState<SignInState, FormData>(verifySignInCode, null);
   const state = verified ?? sent;
   if (state?.step !== "code")
     return (
       <div className="space-y-4">
-        {google ? <GoogleButton next={next} /> : null}
-        <EmailStep state={state} action={request} pending={requesting} mode={mode} next={next} />
+        {workos ? (
+          <>
+            {/* Plain <a> so the /sign-in route runs and sets its PKCE cookie. */}
+            <a
+              href={`/sign-in?next=${encodeURIComponent(next ?? "/studio")}${mode === "signup" ? "&mode=signup" : ""}`}
+              className="flex w-full items-center justify-center rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-[#140a05] hover:bg-[#ff6f3a]"
+            >
+              {mode === "signup" ? "Create your account" : "Continue to sign in"}
+            </a>
+            <p className="text-center text-xs text-muted">Email, Google or your company&apos;s SSO.</p>
+            <details className="group rounded-lg border border-line px-4 py-3 text-sm">
+              <summary className="cursor-pointer list-none text-fg-2 group-open:mb-3">Or get a one-time code by email</summary>
+              <EmailStep state={state} action={request} pending={requesting} mode={mode} next={next} />
+            </details>
+          </>
+        ) : (
+          <>
+            {google ? <GoogleButton next={next} /> : null}
+            <EmailStep state={state} action={request} pending={requesting} mode={mode} next={next} />
+          </>
+        )}
       </div>
     );
   const domain = state.email?.split("@")[1] ?? "";

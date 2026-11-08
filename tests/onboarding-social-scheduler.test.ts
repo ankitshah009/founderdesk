@@ -129,3 +129,26 @@ describe("scheduler", () => {
     expect((await sched.upcomingFor(job.founderEmail)).map((i) => i.destination)).toEqual(["web", "x"]);
   });
 });
+
+describe("WorkOS switch", () => {
+  it("stays off until all three keys are set, with a strong cookie password", async () => {
+    const { workosEnabled } = await import("@/lib/workos");
+    const saved = { ...process.env };
+    try {
+      delete process.env.WORKOS_API_KEY;
+      process.env.WORKOS_CLIENT_ID = "client_x";
+      process.env.WORKOS_COOKIE_PASSWORD = "x".repeat(40);
+      expect(workosEnabled()).toBe(false);
+      process.env.WORKOS_API_KEY = "sk_test_x";
+      process.env.WORKOS_COOKIE_PASSWORD = "short";
+      expect(workosEnabled()).toBe(false);
+      process.env.WORKOS_COOKIE_PASSWORD = "x".repeat(40);
+      expect(workosEnabled()).toBe(true);
+    } finally {
+      for (const k of ["WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD"]) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    }
+  });
+});
