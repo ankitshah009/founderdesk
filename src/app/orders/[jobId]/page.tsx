@@ -19,6 +19,7 @@ import { orderView, type OrderView } from "@/lib/views";
 import { isFreeEligible } from "@/lib/workflow/intake";
 import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
+import { StartFreeCard } from "./start-card";
 import { kick } from "@/lib/workflow/run";
 
 export const metadata: Metadata = { title: "Your order", robots: { index: false } };
@@ -76,7 +77,7 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
       <div className="flex flex-wrap items-center gap-3">
         <MonoLabel>Order {job.id.slice(0, 8).toUpperCase()}</MonoLabel>
         <StageChip stage={job.stage} />
-        <AutoRefresh tickUrl={tickUrl} active={IN_PROGRESS.includes(job.stage) || job.stage === "WAITING_FOR_FOUNDER"} />
+        <AutoRefresh tickUrl={tickUrl} active={IN_PROGRESS.includes(job.stage) || job.stage === "WAITING_FOR_FOUNDER" || job.stage === "AWAITING_PAYMENT"} />
       </div>
       <div className="mt-8 grid gap-10 md:grid-cols-[1fr_320px]">
         <div className="min-w-0">
@@ -90,6 +91,9 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
           ) : (
             <Headline view={view} payUrl={payUrl} freeEligible={freeEligible} />
           )}
+          {job.stage === "AWAITING_PAYMENT" && freeEligible ? (
+            <StartFreeCard token={token} email={job.founderEmail} inbox={env().AGENTMAIL_INBOX_ID ?? "founderdesk@agentmail.to"} payUrl={payUrl} price={`$${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)}`} />
+          ) : null}
           {view.dispatches.length || job.paidAt ? (
             <section className="mt-10 rounded-3xl border border-line bg-panel p-3 md:p-4" aria-labelledby="activity-h">
               <div className="flex items-center justify-between px-3 pt-2 pb-3">
@@ -126,11 +130,7 @@ function Headline({ view, payUrl, freeEligible }: { view: OrderView; payUrl: str
       return block(
         "Your brief is in",
         <>{usableThesis(job) ? <>We&apos;ll argue: <span className="text-fg-2">{usableThesis(job)}</span></> : <>Topic: <span className="text-fg-2">{job.topic}</span></>}{job.audience ? <> — for {job.audience}</> : null}.{freeEligible ? null : " Pay to start research."}</>,
-        freeEligible ? (
-          <p className="rounded-xl bg-accent-tint px-4 py-3 text-sm text-fg">
-            Your first article is free — open the email we sent to <span className="font-semibold">{job.founderEmail}</span> and confirm it&apos;s you to start.
-          </p>
-        ) : payUrl ? (
+        freeEligible ? null : payUrl ? (
           <ButtonLink href={payUrl} prefetch={false}>
             Pay ${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)} and start research
           </ButtonLink>

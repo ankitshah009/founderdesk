@@ -200,25 +200,20 @@ export async function signOutAction(form: FormData) {
 export async function claimFreeArticle(form: FormData) {
   const jobId = verifyLink(String(form.get("t") ?? ""), "free");
   if (!jobId) throw new Error("This link is invalid or has expired.");
-  const job = await getJob(jobId);
-  if (!job) throw new Error("Order not found");
-  const { isFreeEligible } = await import("@/lib/workflow/intake");
-  if (job.paymentStatus === "unpaid" && (await isFreeEligible(job.founderEmail))) {
-    const { getDb } = await import("@/lib/db/client");
-    const { jobs } = await import("@/lib/db/schema");
-    const { and, eq } = await import("drizzle-orm");
-    const db = await getDb();
-    try {
-      await db.update(jobs).set({ amountCents: 0 }).where(and(eq(jobs.id, jobId), eq(jobs.paymentStatus, "unpaid")));
-      await fulfillPayment({ jobId, checkoutSessionId: `free_${jobId}`, amountTotal: null });
-    } catch {
-      // The partial unique index refused a second free article for this email.
-      const { env } = await import("@/lib/env");
-      await db.update(jobs).set({ amountCents: env().OFFER_AMOUNT_CENTS }).where(and(eq(jobs.id, jobId), eq(jobs.paymentStatus, "unpaid")));
-    }
-    kick();
-  }
+  const { claimFree } = await import("@/lib/workflow/intake");
+  if (await claimFree(jobId)) kick();
   redirect(links.orderPath(jobId));
+}
+
+/** Order page: email the confirm link again. */
+export async function resendStartLink(_: ActionState, form: FormData): Promise<ActionState> {
+  const jobId = verifyLink(String(form.get("t") ?? ""), "order");
+  if (!jobId) return { error: "This link is invalid or has expired." };
+  const { resendStartEmail } = await import("@/lib/workflow/intake");
+  const res = await resendStartEmail(jobId);
+  if (res === "limit") return { error: "We've sent it a few times already. Check spam, or reply to any of our emails." };
+  if (res === "sent") kick();
+  return { ok: "Sent. It usually arrives within a minute." };
 }
 
 export async function deskRetry(form: FormData): Promise<void> {

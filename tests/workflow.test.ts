@@ -344,3 +344,42 @@ describe("approved images", () => {
     }
   });
 });
+
+describe("free article by reply", () => {
+  async function mail(thread: string, from: string, text: string) {
+    const payload = { event_type: "message.received", message: { inbox_id: INBOX, thread_id: thread, message_id: `<${randomUUID()}@mail>`, from, to: [INBOX], subject: "Moat", text, extracted_text: text, attachments: [] } };
+    const ev = await persistEvent("simulator", randomUUID(), "message.received", payload);
+    await processInboundEvent(ev!.id);
+  }
+
+  it("a founder's reply on our thread starts the free article and lands in the brief", async () => {
+    const thread = `thd_${randomUUID()}`;
+    await mail(thread, "Sam Lee <sam@moat.test>", "I want to write about how founders find a moat. My audience is seed-stage founders.");
+    const db = await getDb();
+    const [job] = await db.select().from(jobs).where(eq(jobs.threadId, thread));
+    expect(job!.stage).toBe("AWAITING_PAYMENT");
+    expect(job!.paymentStatus).toBe("unpaid");
+
+    // A stranger on the same thread cannot start it.
+    await mail(thread, "Eve <eve@other.test>", "start");
+    expect((await getJob(job!.id))!.paymentStatus).toBe("unpaid");
+
+    await mail(thread, "Sam Lee <sam@moat.test>", "Focus on distribution moats, not tech.");
+    const after = await getJob(job!.id);
+    expect(after!.paymentStatus).toBe("paid");
+    expect(after!.amountCents).toBe(0);
+    expect(after!.founderReplies.at(-1)!.text).toContain("distribution moats");
+  });
+
+  it("does not grant a second free article by reply", async () => {
+    const t1 = `thd_${randomUUID()}`;
+    const t2 = `thd_${randomUUID()}`;
+    await mail(t1, "Ria <ria@moat.test>", "I want to write about pricing pages for founders. My audience is founders.");
+    await mail(t1, "Ria <ria@moat.test>", "go");
+    await mail(t2, "Ria <ria@moat.test>", "I want to write about hiring a first engineer. My audience is founders.");
+    await mail(t2, "Ria <ria@moat.test>", "go");
+    const db = await getDb();
+    const [second] = await db.select().from(jobs).where(eq(jobs.threadId, t2));
+    expect(second!.paymentStatus).toBe("unpaid");
+  });
+});

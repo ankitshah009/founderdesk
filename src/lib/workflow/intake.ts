@@ -1,6 +1,6 @@
 import { and, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { jobs, providerEvents, type FounderReply, type Job } from "@/lib/db/schema";
+import { jobs, outboundMessages, providerEvents, type FounderReply, type Job } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parseAddress, parseBrief } from "@/lib/brief";
 import { inboundSchema } from "@/lib/integrations/agentmail";
@@ -117,6 +117,38 @@ async function markEvent(id: string, status: "processed" | "ignored" | "failed",
   await db.update(providerEvents).set({ status, note: note ?? null, jobId: jobId ?? null, processedAt: new Date() }).where(eq(providerEvents.id, id));
 }
 
+/**
+ * Start the free first article. Proof of the founder's email comes from either
+ * the signed link we emailed or a reply on our own thread (only that mailbox
+ * received the thread). Returns true when this call started the order.
+ */
+export async function claimFree(jobId: string): Promise<boolean> {
+  const job = await getJob(jobId);
+  if (!job || job.paymentStatus !== "unpaid" || !(await isFreeEligible(job.founderEmail))) return false;
+  const db = await getDb();
+  const { fulfillPayment } = await import("./payments");
+  try {
+    await db.update(jobs).set({ amountCents: 0 }).where(and(eq(jobs.id, jobId), eq(jobs.paymentStatus, "unpaid")));
+    return (await fulfillPayment({ jobId, checkoutSessionId: `free_${jobId}`, amountTotal: null })).fulfilled;
+  } catch {
+    // The partial unique index refused a second free article for this email.
+    await db.update(jobs).set({ amountCents: env().OFFER_AMOUNT_CENTS }).where(and(eq(jobs.id, jobId), eq(jobs.paymentStatus, "unpaid")));
+    return false;
+  }
+}
+
+/** Resend the confirm link (or pay link) — at most 3 times per order. */
+export async function resendStartEmail(jobId: string): Promise<"sent" | "limit" | "not_needed"> {
+  const job = await getJob(jobId);
+  if (!job || job.paymentStatus !== "unpaid") return "not_needed";
+  const db = await getDb();
+  const sent = await db.select({ id: outboundMessages.id }).from(outboundMessages).where(and(eq(outboundMessages.jobId, jobId), eq(outboundMessages.kind, "acknowledgement")));
+  if (sent.length >= 4) return "limit";
+  const freeEligible = await isFreeEligible(job.founderEmail);
+  await queueMessage(job, "acknowledgement", `${job.id}:acknowledgement:resend${sent.length}`, templates.acknowledgement({ ...job, freeEligible }));
+  return "sent";
+}
+
 /** Turn a persisted AgentMail message.received event into a job or a reply. */
 export async function processInboundEvent(eventId: string) {
   const db = await getDb();
@@ -147,6 +179,12 @@ export async function processInboundEvent(eventId: string) {
   if (existing) {
     if (existing.founderEmail !== from.email) return markEvent(event.id, "ignored", `reply from ${from.email}, not the job's founder`, existing.id);
     await recordFounderReply(existing, { text, messageId: m.message_id, attachments });
+    // Replying on our thread proves the mailbox as well as the emailed link does.
+    if (existing.stage === "AWAITING_PAYMENT" && (await claimFree(existing.id))) {
+      const { kick } = await import("./run");
+      kick();
+      return markEvent(event.id, "processed", "founder reply — free article started", existing.id);
+    }
     return markEvent(event.id, "processed", "founder reply", existing.id);
   }
   if (!text) return markEvent(event.id, "ignored", "empty message");

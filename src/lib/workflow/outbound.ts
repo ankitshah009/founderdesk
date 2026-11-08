@@ -39,7 +39,7 @@ export const templates = {
         job.sourceUrls.length ? `Sources you sent: ${job.sourceUrls.join(", ")}` : null,
         "",
         ...(job.freeEligible
-          ? ["Your first article is free. Confirm it's you and start research here:", links.free(job.id)]
+          ? ["Your first article is free. Confirm and start: " + links.free(job.id), "", "Or just reply to this email: your reply confirms it's you and starts research. Anything you add goes into the article."]
           : [`Price: ${money(job.amountCents)} for this article. Pay here to start research:`, links.checkout(job.id)]),
         "",
         `Track your order: ${links.order(job.id)}`,
