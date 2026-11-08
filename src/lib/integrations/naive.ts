@@ -38,7 +38,7 @@ export async function createAgent(args: { name: string; system: string; idempote
       system: args.system,
       // Agents in this pipeline reason over evidence the app supplies; they do
       // not need to browse, run shells or spend on their own.
-      tools: { default_config: { permission: "deny" } },
+      tools: { default_config: { permission: "deny" }, configs: {} },
       budget: {
         cap_micro_usd: e.NAIVE_SESSION_BUDGET_MICRO_USD * 200,
         max_task_micro_usd: e.NAIVE_SESSION_BUDGET_MICRO_USD,
