@@ -586,3 +586,11 @@ export async function confirmPersonas(): Promise<void> {
   await updateProfile(email, { setup: { ...profile.setup, personasConfirmed: true } });
   refresh();
 }
+
+/** Remember on the account that the tutorial was shown, so it auto-opens only once. */
+export async function markTutorialSeen(): Promise<void> {
+  const { email } = await requireStudio();
+  const profile = await getProfile(email);
+  if (profile.setup?.tourSeen) return;
+  await updateProfile(email, { setup: { ...(profile.setup ?? {}), tourSeen: true } });
+}

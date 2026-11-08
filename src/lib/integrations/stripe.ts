@@ -20,6 +20,8 @@ export async function createCheckoutSession(args: {
   attempt: number;
 }) {
   const priceId = env().STRIPE_PRICE_ID;
+  // Make sure the launch promo code exists; never block checkout on it.
+  await ensureLaunchPromo().catch((err) => console.error("[founderdesk] launch promo setup failed", (err as Error).message));
   return stripe().checkout.sessions.create(
     {
       mode: "payment",
@@ -42,11 +44,13 @@ export async function createCheckoutSession(args: {
               },
             },
       ],
+      // Launch promo codes (e.g. FIRST100) are entered on Stripe's page and validated by Stripe.
+      allow_promotion_codes: true,
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
     },
     // Idempotent per job and attempt: a double-clicked "Pay" reuses the session.
-    { idempotencyKey: `checkout:${args.jobId}:${args.attempt}` },
+    { idempotencyKey: `checkout:v2:${args.jobId}:${args.attempt}` },
   );
 }
 
@@ -74,4 +78,38 @@ export async function createImagePackCheckout(args: { jobId: string; founderEmai
     },
     { idempotencyKey: `images:${args.jobId}:${Math.floor(Date.now() / 600_000)}` },
   );
+}
+
+/**
+ * Launch promo: code FIRST100 = one article free for the first 100 founders
+ * (100% off once, 100 redemptions total). Created in Stripe on first use with
+ * the deployment's own key and remembered in app_settings, so it exists in
+ * whichever Stripe account (sandbox or live) the app is connected to. Stripe
+ * itself enforces the 100-use cap.
+ */
+export const LAUNCH_PROMO = { code: "FIRST100", maxRedemptions: 100 } as const;
+
+export async function ensureLaunchPromo(): Promise<void> {
+  const { getDb } = await import("@/lib/db/client");
+  const { appSettings } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const db = await getDb();
+  const key = "stripe_promo_first100";
+  const [done] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+  if (done) return;
+  const s = stripe();
+  const existing = await s.promotionCodes.list({ code: LAUNCH_PROMO.code, limit: 1 });
+  let id = existing.data[0]?.id;
+  if (!id) {
+    const coupon = await s.coupons.create(
+      { name: "First 100 founders: one article free", percent_off: 100, duration: "once", metadata: { campaign: "first100" } },
+      { idempotencyKey: "fd-coupon-first100-v1" },
+    );
+    const promo = await s.promotionCodes.create(
+      { promotion: { type: "coupon", coupon: coupon.id }, code: LAUNCH_PROMO.code, max_redemptions: LAUNCH_PROMO.maxRedemptions, metadata: { campaign: "first100" } },
+      { idempotencyKey: "fd-promo-first100-v1" },
+    );
+    id = promo.id;
+  }
+  await db.insert(appSettings).values({ key, value: { id } }).onConflictDoNothing();
 }

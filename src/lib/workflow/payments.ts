@@ -50,10 +50,11 @@ export async function checkoutUrlFor(job: Job): Promise<string> {
  * UPDATE lets exactly one caller flip the job to paid, and only that caller
  * enqueues research and the receipt email.
  */
-export async function fulfillPayment(args: { jobId: string; checkoutSessionId: string | null; amountTotal: number | null }): Promise<{ fulfilled: boolean; job: Job | null }> {
+export async function fulfillPayment(args: { jobId: string; checkoutSessionId: string | null; amountTotal: number | null; discountCents?: number }): Promise<{ fulfilled: boolean; job: Job | null }> {
   const job = await getJob(args.jobId);
   if (!job) return { fulfilled: false, job: null };
-  if (args.amountTotal != null && args.amountTotal < job.amountCents) {
+  // A Stripe-applied promotion code counts toward the price; anything else short is refused.
+  if (args.amountTotal != null && args.amountTotal + (args.discountCents ?? 0) < job.amountCents) {
     throw new Error(`Paid amount ${args.amountTotal} is below the order price ${job.amountCents}`);
   }
   const db = await getDb();

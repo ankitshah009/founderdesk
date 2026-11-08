@@ -522,7 +522,7 @@ export const profiles = pgTable("profiles", {
   brand: jsonb("brand").$type<Brand | null>(),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   /** Setup steps the founder confirmed explicitly (e.g. kept the default personas). */
-  setup: jsonb("setup").$type<{ personasConfirmed?: boolean }>().notNull().default({}),
+  setup: jsonb("setup").$type<{ personasConfirmed?: boolean; tourSeen?: boolean }>().notNull().default({}),
   voice: jsonb("voice").$type<VoiceProfile | null>(),
   styleGuide: jsonb("style_guide").$type<StyleGuide>().notNull().default({ preferredTerms: [], bannedPhrases: [], tone: "", formatting: [] }),
   personas: jsonb("personas").$type<Persona[]>().notNull().default([]),

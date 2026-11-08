@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, ArrowRight, X, PlayCircle } from "lucide-react";
 import { cn } from "@/components/ui";
 
 const DONE_KEY = "fd_studio_tour_v1";
@@ -14,7 +15,7 @@ export type TourStep = { title: string; body: string; target: string; href: stri
  * each step, says what it does in a sentence, and offers to do it now. Opens
  * on the first visit (until finished or skipped); "Take the tour" replays it.
  */
-export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart: boolean }) {
+export function StudioTour({ steps, autoStart, onSeen }: { steps: TourStep[]; autoStart: boolean; onSeen?: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [i, setI] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -26,7 +27,8 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
     };
     window.addEventListener("fd:tour", start);
     let t: ReturnType<typeof setTimeout> | undefined;
-    if (autoStart && !localStorage.getItem(DONE_KEY)) t = setTimeout(start, 600);
+    // First visit after signing in or up: the account hasn't seen it yet (stored server-side).
+    if (autoStart) t = setTimeout(start, 600);
     return () => {
       window.removeEventListener("fd:tour", start);
       clearTimeout(t);
@@ -47,17 +49,26 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
     const frame = requestAnimationFrame(measure);
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
+    // Streaming content shifts the layout after the first frame: follow it.
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(document.body);
+    const late = [setTimeout(measure, 300), setTimeout(measure, 1000)];
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
+      ro.disconnect();
+      late.forEach(clearTimeout);
     };
   }, [open, measure]);
 
   const close = useCallback(() => {
-    localStorage.setItem(DONE_KEY, "1");
+    try {
+      localStorage.setItem(DONE_KEY, "1");
+    } catch {}
     setOpen(false);
-  }, []);
+    void onSeen?.();
+  }, [onSeen]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,7 +87,9 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
   const cardLeft = rect ? (rect.right + 16 + 340 < window.innerWidth ? rect.right + 16 : Math.max(16, Math.min(window.innerWidth - 356, rect.left))) : window.innerWidth / 2 - 170;
   const cardTopFinal = rect && rect.right + 16 + 340 >= window.innerWidth ? Math.min(window.innerHeight - 260, rect.bottom + 12) : cardTop;
 
-  return (
+  // Portal to <body>: a parent with a filter or backdrop blur would otherwise
+  // become the containing block for these fixed elements and offset them.
+  return createPortal(
     <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-labelledby="tour-title">
       {rect ? (
         <div
@@ -127,14 +140,19 @@ export function StudioTour({ steps, autoStart }: { steps: TourStep[]; autoStart:
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-export function TakeTourButton({ className }: { className?: string }) {
+export function TutorialButton({ className }: { className?: string }) {
   return (
-    <button type="button" onClick={() => window.dispatchEvent(new Event("fd:tour"))} className={cn("text-xs text-muted underline-offset-2 hover:text-fg hover:underline", className)}>
-      Take the 1-minute tour
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("fd:tour"))}
+      className={cn("inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-fg-2 hover:border-white/25 hover:text-fg", className)}
+    >
+      <PlayCircle className="size-4" aria-hidden /> Tutorial
     </button>
   );
 }

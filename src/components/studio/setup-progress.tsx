@@ -11,7 +11,13 @@ import { nextStep, type SetupStep } from "@/lib/studio/setup";
 export function SetupProgress({ steps, current }: { steps: SetupStep[]; current?: SetupStep["key"][] }) {
   const next = nextStep(steps);
   const done = steps.filter((s) => s.done).length;
-  if (!next) return null;
+  if (!next) {
+    return (
+      <section aria-label="Setup progress" className="mb-8 flex items-center gap-2 rounded-xl border border-green/30 bg-green/10 px-4 py-3 text-sm text-green">
+        <Check className="size-4" strokeWidth={3} aria-hidden /> All set: {steps.length} of {steps.length} done. Every new draft uses your brand, voice and readers.
+      </section>
+    );
+  }
   const hereDone = current?.length ? steps.filter((s) => current.includes(s.key)).every((s) => s.done) : false;
   return (
     <section aria-label="Setup progress" className="mb-8 rounded-xl border border-line bg-panel px-4 py-3.5">

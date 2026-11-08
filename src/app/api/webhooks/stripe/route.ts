@@ -48,7 +48,8 @@ export async function POST(req: Request) {
     await mark("ignored", "no job_id in metadata");
     return NextResponse.json({ received: true });
   }
-  if (session.payment_status !== "paid") {
+  // "no_payment_required": a promotion code covered the whole price.
+  if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
     await mark("ignored", `payment_status ${session.payment_status}`, jobId);
     return NextResponse.json({ received: true });
   }
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
     }
   }
   try {
-    const res = await fulfillPayment({ jobId, checkoutSessionId: session.id, amountTotal: session.amount_total });
+    const res = await fulfillPayment({ jobId, checkoutSessionId: session.id, amountTotal: session.amount_total, discountCents: session.total_details?.amount_discount ?? 0 });
     await mark("processed", res.fulfilled ? "fulfilled" : "already fulfilled", jobId);
     kick();
     return NextResponse.json({ received: true });

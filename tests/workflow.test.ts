@@ -510,3 +510,16 @@ describe("per-channel schedule", () => {
     }
   });
 });
+
+describe("promo codes", () => {
+  it("accepts a Stripe promotion that covers the price, but not a short payment without one", async () => {
+    const { createJob } = await import("@/lib/workflow/intake");
+    const db = await getDb();
+    const a = await createJob({ channel: "web", founderEmail: "promo@founder.test", subject: "P", body: "I want to write about why promo codes help launches. My audience is founders." });
+    const b = await createJob({ channel: "web", founderEmail: "short@founder.test", subject: "S", body: "I want to write about why short payments must fail. My audience is founders." });
+    await db.update(jobs).set({ amountCents: 900 }).where(eq(jobs.id, a.id));
+    await db.update(jobs).set({ amountCents: 900 }).where(eq(jobs.id, b.id));
+    expect((await fulfillPayment({ jobId: a.id, checkoutSessionId: "cs_promo_1", amountTotal: 0, discountCents: 900 })).fulfilled).toBe(true);
+    await expect(fulfillPayment({ jobId: b.id, checkoutSessionId: "cs_short_1", amountTotal: 0 })).rejects.toThrow(/below the order price/);
+  });
+});

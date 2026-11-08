@@ -28,3 +28,12 @@ export function setupSteps(p: Profile, counts: { samples: number; jobs: number }
 }
 
 export const nextStep = (steps: SetupStep[]) => steps.find((s) => !s.done) ?? null;
+
+/** Copy for the Studio tutorial, one card per setup step. */
+export const TOUR_COPY: Record<string, { title: string; body: string; cta: string }> = {
+  brand: { title: "Capture your brand", body: "Paste your website, upload a deck or write a paragraph. We pull out what you sell, who it's for and the words you use.", cta: "Capture it" },
+  voice: { title: "Teach it your voice", body: "Add something you wrote, or start from a built-in voice. The Writer matches your sentence length, contractions and phrases.", cta: "Add a sample" },
+  style: { title: "Set your style guide", body: "Tone, words you prefer and phrases you never want to see. The Editor enforces them on every draft.", cta: "Set the guide" },
+  personas: { title: "Pick your readers", body: "Investors, customers, developers: each article is aimed at one of them. Keep the defaults or make them yours.", cta: "Review personas" },
+  article: { title: "Start your first article", body: "Drop in rough notes. Researcher, Writer, Editor, Fact-checker and Reviewer take it from there. Your first one is free.", cta: "Start writing" },
+};

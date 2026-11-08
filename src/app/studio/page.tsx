@@ -8,7 +8,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { IN_PROGRESS, StageChip } from "@/components/stages";
 import { Card, PageHead, ProgressRing, SignedOut, Skeleton, timeAgo } from "@/components/studio/shared";
 import { ButtonLink, Chip, cn } from "@/components/ui";
-import { StudioTour, TakeTourButton, type TourStep } from "@/components/studio/tour";
+import { TutorialButton } from "@/components/studio/tour";
 import { setupSteps } from "@/lib/studio/setup";
 import { getDb } from "@/lib/db/client";
 import { reviews, type Job, type JobStage, type Review } from "@/lib/db/schema";
@@ -36,13 +36,6 @@ const COLUMNS: Array<{ label: string; stages: JobStage[] }> = [
   { label: "Live", stages: ["PUBLISHING", "PUBLISHED", "COMPLETE"] },
 ];
 const ATTENTION: JobStage[] = ["READY_FOR_APPROVAL", "WAITING_FOR_FOUNDER", "UNABLE_TO_COMPLETE"];
-const TOUR_COPY: Record<string, { title: string; body: string; cta: string }> = {
-  brand: { title: "Capture your brand", body: "Paste your website, upload a deck or write a paragraph. We pull out what you sell, who it's for and the words you use.", cta: "Capture it" },
-  voice: { title: "Teach it your voice", body: "Add something you wrote, or start from a built-in voice. The Writer matches your sentence length, contractions and phrases.", cta: "Add a sample" },
-  style: { title: "Set your style guide", body: "Tone, words you prefer and phrases you never want to see. The Editor enforces them on every draft.", cta: "Set the guide" },
-  personas: { title: "Pick your readers", body: "Investors, customers, developers: each article is aimed at one of them. Keep the defaults or make them yours.", cta: "Review personas" },
-  article: { title: "Start your first article", body: "Drop in rough notes. Researcher, Writer, Editor, Fact-checker and Reviewer take it from there. Your first one is free.", cta: "Start writing" },
-};
 const ROLE_NAME = Object.fromEntries(AGENT_TEAM.map((a) => [a.role, a.name])) as Record<string, string>;
 
 function scoreTone(n: number) {
@@ -68,22 +61,20 @@ async function Overview() {
   const samples = knowledge.filter((k) => k.kind === "sample").length;
   const steps = setupSteps(profile, { samples, jobs: jobs.length });
   const doneCount = steps.filter((s) => s.done).length;
-  const tour: TourStep[] = steps.map((s) => ({ title: TOUR_COPY[s.key].title, body: TOUR_COPY[s.key].body, cta: TOUR_COPY[s.key].cta, target: s.tourTarget, href: s.href, done: s.done }));
 
   const attention = jobs.filter((j) => ATTENTION.includes(j.stage));
   const live = jobs.find((j) => IN_PROGRESS.includes(j.stage) && j.stage !== "PUBLISHED");
 
   return (
     <>
-      <StudioTour steps={tour} autoStart={doneCount < steps.length} />
       <PageHead
         label="Studio"
         title={profile.brand?.name ? `${profile.brand.name}'s desk` : "Your desk"}
         lede="Everything the desk knows about you, and everything it's working on."
       >
         <div className="flex items-center gap-3">
+          <TutorialButton />
           {live ? <AutoRefresh tickUrl={`/api/orders/${live.id}/tick?t=${encodeURIComponent(signLink(live.id, "order"))}`} active /> : null}
-          <TakeTourButton />
           <ButtonLink href="/start">
             Start an article <ArrowRight className="size-3.5" aria-hidden />
           </ButtonLink>

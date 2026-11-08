@@ -62,8 +62,8 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
   const sessionId = typeof sp.session_id === "string" ? sp.session_id : null;
   if (sessionId && isLive("stripe")) {
     const session = await stripe().checkout.sessions.retrieve(sessionId);
-    if (session.metadata?.job_id === jobId && session.payment_status === "paid") {
-      const res = await fulfillPayment({ jobId, checkoutSessionId: session.id, amountTotal: session.amount_total });
+    if (session.metadata?.job_id === jobId && (session.payment_status === "paid" || session.payment_status === "no_payment_required")) {
+      const res = await fulfillPayment({ jobId, checkoutSessionId: session.id, amountTotal: session.amount_total, discountCents: session.total_details?.amount_discount ?? 0 });
       if (res.fulfilled) kick();
     }
   }
@@ -154,6 +154,9 @@ function Headline({ view, payUrl, freeEligible, prior }: { view: OrderView; payU
             <ButtonLink href={payUrl} prefetch={false}>
               Pay ${(Math.min(job.amountCents, env().OFFER_AMOUNT_CENTS) / 100).toFixed(0)} and start research
             </ButtonLink>
+            <p className="text-xs text-muted">
+              One of the first 100 founders? Enter <span className="font-mono text-fg-2">FIRST100</span> at checkout and this one is free.
+            </p>
           </div>
         ) : null,
       );

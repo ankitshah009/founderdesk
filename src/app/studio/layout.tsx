@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { Nav } from "@/components/chrome";
 import { StudioNav, StudioNavLinks } from "@/components/studio/nav";
+import { TutorialMount } from "@/components/studio/tutorial-mount";
 
 export const metadata: Metadata = { title: { default: "Studio", template: "%s · Studio" }, robots: { index: false } };
 
@@ -15,6 +16,9 @@ export default function StudioLayout({ children }: { children: ReactNode }) {
           <div className="md:sticky md:top-24">
             <Suspense fallback={<StudioNavLinks path={null} />}>
               <StudioNav />
+            </Suspense>
+            <Suspense fallback={null}>
+              <TutorialMount />
             </Suspense>
           </div>
         </aside>
