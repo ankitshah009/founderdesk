@@ -97,6 +97,8 @@ export const jobs = pgTable(
     checkoutSessionId: text("checkout_session_id"),
     checkoutUrl: text("checkout_url"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    /** Founder-chosen publish time; null means publish on approval. */
+    publishAt: timestamp("publish_at", { withTimezone: true }),
     revisionCycles: integer("revision_cycles").notNull().default(0),
     sourceSeq: integer("source_seq").notNull().default(0),
     imageCredits: integer("image_credits").notNull().default(0),
@@ -201,6 +203,8 @@ export const approvals = pgTable(
     /** Images the founder chose at approval, in display order, and a hash of their bytes. */
     imageIds: jsonb("image_ids").$type<string[]>().notNull().default([]),
     imagesHash: text("images_hash"),
+    /** When the founder approved publication for; part of what was approved. */
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
     approvedBy: text("approved_by").notNull(),
     approvedAt: timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
   },

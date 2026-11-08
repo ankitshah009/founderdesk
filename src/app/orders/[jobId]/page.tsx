@@ -20,6 +20,9 @@ import { isFreeEligible } from "@/lib/workflow/intake";
 import { usableThesis } from "@/lib/workflow/outbound";
 import { fulfillPayment } from "@/lib/workflow/payments";
 import { StartFreeCard } from "./start-card";
+import { isScheduled } from "@/lib/workflow/publish";
+import { scheduleAction } from "@/app/actions";
+import { LocalTime } from "@/components/local-time";
 import { kick } from "@/lib/workflow/run";
 
 export const metadata: Metadata = { title: "Your order", robots: { index: false } };
@@ -76,12 +79,14 @@ async function Order({ params, searchParams }: PageProps<"/orders/[jobId]">) {
     <div className="frame px-4 py-14 md:px-12 md:py-16">
       <div className="flex flex-wrap items-center gap-3">
         <MonoLabel>Order {job.id.slice(0, 8).toUpperCase()}</MonoLabel>
-        <StageChip stage={job.stage} />
-        <AutoRefresh tickUrl={tickUrl} active={IN_PROGRESS.includes(job.stage) || job.stage === "WAITING_FOR_FOUNDER" || job.stage === "AWAITING_PAYMENT"} />
+        <StageChip stage={job.stage} scheduled={isScheduled(job)} />
+        <AutoRefresh tickUrl={tickUrl} active={(IN_PROGRESS.includes(job.stage) && !isScheduled(job)) || job.stage === "WAITING_FOR_FOUNDER" || job.stage === "AWAITING_PAYMENT"} />
       </div>
       <div className="mt-8 grid gap-10 md:grid-cols-[1fr_320px]">
         <div className="min-w-0">
-          {["PAID", "RESEARCHING", "WRITING", "REVIEWING", "PUBLISHING", "PUBLISHED"].includes(job.stage) ? (
+          {isScheduled(job) ? (
+            <ScheduledPanel token={token} at={job.publishAt!} destinations={job.destinations} />
+          ) : ["PAID", "RESEARCHING", "WRITING", "REVIEWING", "PUBLISHING", "PUBLISHED"].includes(job.stage) ? (
             <GeneratingPanel
               stage={job.stage}
               now={currentActivity(job, view.dispatches, view.sources)}
@@ -243,5 +248,31 @@ function Messages({ view }: { view: OrderView }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+const DEST_LABEL: Record<string, string> = { web: "Web article", x: "X", linkedin: "LinkedIn", instagram: "Instagram" };
+
+function ScheduledPanel({ token, at, destinations }: { token: string; at: Date; destinations: string[] }) {
+  return (
+    <section aria-labelledby="sched-h" className="max-w-xl">
+      <p className="text-xs font-semibold tracking-[0.08em] text-accent uppercase">Approved · scheduled</p>
+      <h1 id="sched-h" className="h1 mt-2 text-fg">
+        Goes live <LocalTime iso={at.toISOString()} withDate />
+      </h1>
+      <p className="lede mt-4">
+        {destinations.map((d) => DEST_LABEL[d] ?? d).join(", ")}. At that time we publish, check the live page serves exactly what you approved, then post.
+      </p>
+      <form action={scheduleAction} className="mt-7 flex flex-wrap gap-2.5">
+        <input type="hidden" name="t" value={token} />
+        <button name="op" value="now" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#140a05] hover:bg-[#ff6f3a]">
+          Publish now instead
+        </button>
+        <button name="op" value="cancel" className="rounded-lg border border-line px-4 py-2 text-sm text-fg-2 hover:text-fg">
+          Cancel schedule
+        </button>
+      </form>
+      <p className="mt-3 text-xs text-muted">Cancelling returns the article to review; nothing is published.</p>
+    </section>
   );
 }

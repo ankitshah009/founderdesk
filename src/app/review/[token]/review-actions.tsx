@@ -14,8 +14,30 @@ type Props = {
   draft: { title: string; dek: string; bodyMarkdown: string; announcement: string };
 };
 
+function localInputValue(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Tomorrow 9:00 in the founder's own timezone — the default slot. */
+function defaultSlot(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return d;
+}
+
 export function ApprovePanel({ token, draftId, contentHash, destination, social, readyImages = [] }: Omit<Props, "draft">) {
   const [state, action, pending] = useActionState<ActionState, FormData>(approveArticle, null);
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [local, setLocal] = useState<string>("");
+  const [bounds] = useState(() => {
+    const now = new Date();
+    return { min: localInputValue(now), max: localInputValue(new Date(now.getTime() + 60 * 86_400_000)) };
+  });
+  const at = local ? new Date(local) : null;
+  const label = at && !Number.isNaN(at.getTime()) ? at.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  const zone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
   if (state?.ok) {
     return (
       <p role="status" className="rounded-lg border border-green/30 bg-green/10 px-3 py-2.5 text-sm text-green">
@@ -73,13 +95,49 @@ export function ApprovePanel({ token, draftId, contentHash, destination, social,
           </div>
         </fieldset>
       ) : null}
+      <fieldset className="space-y-2 text-sm">
+        <legend className="mb-2 text-xs text-muted">When</legend>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup">
+          {(["now", "later"] as const).map((w) => (
+            <label key={w} className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 ${when === w ? "border-accent bg-accent-tint text-fg" : "border-line text-fg-2"}`}>
+              <input
+                type="radio"
+                name="when"
+                value={w}
+                checked={when === w}
+                onChange={() => {
+                  setWhen(w);
+                  if (w === "later" && !local) setLocal(localInputValue(defaultSlot()));
+                }}
+                className="sr-only"
+              />
+              {w === "now" ? "Publish now" : "Schedule"}
+            </label>
+          ))}
+        </div>
+        {when === "later" ? (
+          <div className="space-y-1.5 pt-1">
+            <input
+              type="datetime-local"
+              aria-label="Publish at"
+              value={local}
+              min={bounds.min}
+              max={bounds.max}
+              onChange={(e) => setLocal(e.target.value)}
+              className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-fg"
+            />
+            <p className="text-xs text-subtle">Your time ({zone}). The article and every post you ticked go out together. You can publish early or cancel until then.</p>
+            <input type="hidden" name="publishAt" value={at && !Number.isNaN(at.getTime()) ? at.toISOString() : ""} />
+          </div>
+        ) : null}
+      </fieldset>
       {state?.error ? (
         <p role="alert" className="rounded-lg border border-red/30 bg-red/10 px-3 py-2 text-sm text-red">
           {state.error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} className="w-full py-2">
-        {pending ? "Approving…" : "Approve and publish this version"}
+      <Button type="submit" disabled={pending || (when === "later" && !label)} className="w-full py-2">
+        {pending ? "Approving…" : when === "later" && label ? `Approve and schedule for ${label}` : "Approve and publish this version"}
       </Button>
       <p className="text-xs leading-relaxed text-subtle">Your approval is recorded against this exact version (sha256 {contentHash.slice(0, 10)}…) and these destinations, plus the images you ticked.</p>
     </form>

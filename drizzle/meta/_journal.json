@@ -71,6 +71,13 @@
       "when": 1794105628087,
       "tag": "0009_approval_images",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794107228019,
+      "tag": "0010_schedule",
+      "breakpoints": true
     }
   ]
 }

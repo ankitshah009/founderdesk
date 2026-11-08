@@ -1,8 +1,8 @@
 import { isSoftFinding } from "./humanize";
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { approvals, drafts, images, jobs, publications, type Dispatch, type Job, type MobileCheck, type Publication } from "@/lib/db/schema";
+import { approvals, dispatches, drafts, images, jobs, publications, type Dispatch, type Job, type MobileCheck, type Publication } from "@/lib/db/schema";
 import { env, isLive } from "@/lib/env";
 import { SOCIAL, renderAnnouncement, type SocialDestination } from "@/lib/destinations/social";
 import * as mobilerun from "@/lib/integrations/mobilerun";
@@ -36,7 +36,7 @@ export async function hashImages(jobId: string, ids: string[]): Promise<string |
   return createHash("sha256").update(parts.join("\n")).digest("hex");
 }
 
-export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread"; imageIds?: string[] }) {
+export async function approveDraft(args: { jobId: string; draftId: string; contentHash: string; destinations: string[]; xFormat?: "single" | "thread"; imageIds?: string[]; publishAt?: Date | null }) {
   const job = await getJob(args.jobId);
   if (!job) throw new GateError("Order not found.");
   if (job.stage !== "READY_FOR_APPROVAL") throw new GateError("This article is not waiting for approval.");
@@ -49,6 +49,7 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
   const allowed = new Set<string>(["web", ...Object.values(SOCIAL).filter((a) => a.connected()).map((a) => a.id)]);
   if (instagramConnected()) allowed.add("instagram");
   const destinations = ["web", ...args.destinations.filter((d) => d !== "web" && allowed.has(d))];
+  const publishAt = normalizePublishAt(args.publishAt ?? null);
   const imageIds = [...new Set(args.imageIds ?? [])];
   const imagesHash = await hashImages(job.id, imageIds);
   if (destinations.includes("instagram") && !imageIds.length) throw new GateError("Choose at least one image to post to Instagram.");
@@ -65,14 +66,76 @@ export async function approveDraft(args: { jobId: string; draftId: string; conte
         option: destination === "x" ? (args.xFormat === "single" ? "single" : "thread") : null,
         imageIds,
         imagesHash,
+        scheduledAt: publishAt,
         approvedBy: job.founderEmail,
       })),
     )
     .onConflictDoNothing();
-  if (await transition(job.id, ["READY_FOR_APPROVAL"], "PUBLISHING", null, { destinations })) {
-    await enqueue(job.id, "publish", `${job.id}:publish:web:${draft.id}`, { destination: "web", draftId: draft.id });
+  const reason = publishAt ? `Scheduled for ${publishAt.toISOString()}` : null;
+  if (await transition(job.id, ["READY_FOR_APPROVAL"], "PUBLISHING", reason, { destinations, publishAt })) {
+    await enqueue(job.id, "publish", `${job.id}:publish:web:${draft.id}`, { destination: "web", draftId: draft.id }, publishAt ?? undefined);
   }
-  return { destinations };
+  return { destinations, publishAt };
+}
+
+export const MAX_SCHEDULE_DAYS = 60;
+
+/** A time under 2 minutes away means "now"; past or beyond 60 days is refused. */
+export function normalizePublishAt(at: Date | null, now = Date.now()): Date | null {
+  if (!at) return null;
+  if (Number.isNaN(at.getTime())) throw new GateError("That publish time isn't a valid date.");
+  if (at.getTime() < now - 60_000) throw new GateError("That publish time is in the past.");
+  if (at.getTime() > now + MAX_SCHEDULE_DAYS * 86_400_000) throw new GateError(`You can schedule up to ${MAX_SCHEDULE_DAYS} days ahead.`);
+  return at.getTime() - now < 120_000 ? null : at;
+}
+
+/** True while an approved order is waiting for its scheduled time. */
+export function isScheduled(job: Pick<Job, "stage" | "publishAt">, now = Date.now()): boolean {
+  return job.stage === "PUBLISHING" && !!job.publishAt && job.publishAt.getTime() > now;
+}
+
+async function scheduledWebDispatch(jobId: string) {
+  const db = await getDb();
+  const [d] = await db
+    .select()
+    .from(dispatches)
+    .where(and(eq(dispatches.jobId, jobId), eq(dispatches.kind, "publish"), eq(dispatches.status, "pending"), sql`${dispatches.input}->>'destination' = 'web'`))
+    .limit(1);
+  return d ?? null;
+}
+
+/** Founder changed their mind: publish the scheduled article right away. */
+export async function publishNow(jobId: string): Promise<boolean> {
+  const job = await getJob(jobId);
+  if (!job || !isScheduled(job)) return false;
+  const d = await scheduledWebDispatch(jobId);
+  if (!d) return false;
+  const db = await getDb();
+  await db.update(dispatches).set({ nextRunAt: new Date() }).where(and(eq(dispatches.id, d.id), eq(dispatches.status, "pending")));
+  await db.update(jobs).set({ publishAt: null, stageReason: null, updatedAt: new Date() }).where(eq(jobs.id, jobId));
+  return true;
+}
+
+/**
+ * Cancel a schedule: withdraw the approvals and return to review. Only while
+ * nothing has started — a publish already under way is never interrupted.
+ */
+export async function cancelSchedule(jobId: string): Promise<boolean> {
+  const job = await getJob(jobId);
+  if (!job || !isScheduled(job)) return false;
+  const d = await scheduledWebDispatch(jobId);
+  if (!d) return false;
+  const db = await getDb();
+  const [cancelled] = await db
+    .update(dispatches)
+    .set({ status: "cancelled", finishedAt: new Date() })
+    .where(and(eq(dispatches.id, d.id), eq(dispatches.status, "pending"), sql`${dispatches.leaseUntil} is null or ${dispatches.leaseUntil} < now()`))
+    .returning();
+  if (!cancelled) return false;
+  await db.delete(approvals).where(eq(approvals.draftId, String(d.input.draftId)));
+  // The cancelled dispatch keeps its request key, so re-approval must not reuse it.
+  await db.update(dispatches).set({ requestKey: `${d.requestKey}:cancelled:${d.id}` }).where(eq(dispatches.id, d.id));
+  return !!(await transition(jobId, ["PUBLISHING"], "READY_FOR_APPROVAL", "Schedule cancelled — approve again when ready", { publishAt: null }));
 }
 
 export async function submitFounderEdit(args: { jobId: string; baseDraftId: string; title: string; dek: string; bodyMarkdown: string; announcement: string }) {

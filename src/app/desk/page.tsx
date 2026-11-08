@@ -77,7 +77,7 @@ async function Desk() {
                     </td>
                     <td className="px-4 py-3 text-muted">{j.founderEmail}</td>
                     <td className="px-4 py-3">
-                      <StageChip stage={j.stage} />
+                      <StageChip stage={j.stage} scheduled={j.stage === "PUBLISHING" && !!j.publishAt && new Date(j.publishAt).getTime() > nowMs()} />
                     </td>
                     <td className="px-4 py-3 text-xs text-muted">{j.updatedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
                   </tr>

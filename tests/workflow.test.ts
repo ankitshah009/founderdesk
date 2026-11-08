@@ -383,3 +383,58 @@ describe("free article by reply", () => {
     expect(second!.paymentStatus).toBe("unpaid");
   });
 });
+
+describe("scheduled publishing", () => {
+  async function approvedLater(tag: string, inMs: number) {
+    stubPublicWeb();
+    const { createJob } = await import("@/lib/workflow/intake");
+    const db = await getDb();
+    const job = await createJob({ channel: "web", founderEmail: `${tag}@founder.test`, subject: tag, body: "I want to write about why founders should schedule posts. My audience is founders." });
+    const [d] = await db.insert(drafts).values({ jobId: job.id, version: 1, author: "writer", title: `Sched ${tag}`, dek: "D", bodyMarkdown: "B".repeat(300), announcement: "A", contentHash: `h-${tag}` }).returning();
+    await db.insert(reviews).values({ jobId: job.id, draftId: d!.id, outcome: "READY_FOR_APPROVAL", summary: "ok", findings: [] });
+    await db.update(jobs).set({ stage: "READY_FOR_APPROVAL", paymentStatus: "paid" }).where(eq(jobs.id, job.id));
+    const at = new Date(Date.now() + inMs);
+    await approveDraft({ jobId: job.id, draftId: d!.id, contentHash: d!.contentHash, destinations: [], publishAt: at });
+    return { db, job, draft: d!, at };
+  }
+
+  it("records the time on the approval and does not publish early", async () => {
+    const { db, job, at } = await approvedLater("sched1", 3 * 3_600_000);
+    const [a] = await db.select().from(approvals).where(eq(approvals.jobId, job.id));
+    expect(a!.scheduledAt!.getTime()).toBe(at.getTime());
+    await runWork({ budgetMs: 3_000 });
+    expect(await db.select().from(publications).where(eq(publications.jobId, job.id))).toHaveLength(0);
+    const { isScheduled } = await import("@/lib/workflow/publish");
+    expect(isScheduled((await getJob(job.id))!)).toBe(true);
+  });
+
+  it("publishes immediately on 'publish now'", async () => {
+    const { db, job } = await approvedLater("sched2", 3 * 3_600_000);
+    const { publishNow } = await import("@/lib/workflow/publish");
+    expect(await publishNow(job.id)).toBe(true);
+    await runWork({ budgetMs: 8_000 });
+    const [pub] = await db.select().from(publications).where(eq(publications.jobId, job.id));
+    expect(pub?.status).toBe("published");
+  });
+
+  it("cancel returns to review with no approval, and re-approval publishes", async () => {
+    const { db, job, draft } = await approvedLater("sched3", 3 * 3_600_000);
+    const { cancelSchedule } = await import("@/lib/workflow/publish");
+    expect(await cancelSchedule(job.id)).toBe(true);
+    expect((await getJob(job.id))!.stage).toBe("READY_FOR_APPROVAL");
+    expect(await db.select().from(approvals).where(eq(approvals.jobId, job.id))).toHaveLength(0);
+    await approveDraft({ jobId: job.id, draftId: draft.id, contentHash: draft.contentHash, destinations: [] });
+    await runWork({ budgetMs: 8_000 });
+    const [pub] = await db.select().from(publications).where(eq(publications.jobId, job.id));
+    expect(pub?.status).toBe("published");
+  });
+
+  it("refuses past or far-future times; under two minutes means now", async () => {
+    const { normalizePublishAt } = await import("@/lib/workflow/publish");
+    const now = Date.now();
+    expect(() => normalizePublishAt(new Date(now - 3_600_000), now)).toThrow(GateError);
+    expect(() => normalizePublishAt(new Date(now + 61 * 86_400_000), now)).toThrow(GateError);
+    expect(normalizePublishAt(new Date(now + 30_000), now)).toBeNull();
+    expect(normalizePublishAt(new Date(now + 3_600_000), now)!.getTime()).toBe(now + 3_600_000);
+  });
+});

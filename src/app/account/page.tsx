@@ -1,4 +1,5 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
+import { nowMs } from "@/lib/clock";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -108,7 +109,7 @@ async function Orders() {
                   <p className="truncate text-lg font-semibold tracking-[-0.02em] text-fg">{j.topic}</p>
                   <p className="mt-1 text-xs text-muted">{j.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {j.stageReason ?? STAGE_LABEL[j.stage]}</p>
                 </div>
-                <StageChip stage={j.stage} />
+                <StageChip stage={j.stage} scheduled={j.stage === "PUBLISHING" && !!j.publishAt && new Date(j.publishAt).getTime() > nowMs()} />
               </div>
               {j.stage !== "AWAITING_PAYMENT" && j.stage !== "UNABLE_TO_COMPLETE" ? <Progress stage={j.stage} /> : null}
               {(() => {

@@ -27,8 +27,8 @@ const tone = (s: JobStage) =>
           ? "neutral"
           : "blue";
 
-export function StageChip({ stage }: { stage: JobStage }) {
-  return <Chip tone={tone(stage)}>{STAGE_LABEL[stage]}</Chip>;
+export function StageChip({ stage, scheduled }: { stage: JobStage; scheduled?: boolean }) {
+  return <Chip tone={tone(stage)}>{scheduled ? "Scheduled" : STAGE_LABEL[stage]}</Chip>;
 }
 
 export const IN_PROGRESS: JobStage[] = ["PAID", "RESEARCHING", "WRITING", "REVIEWING", "PUBLISHING", "PUBLISHED"];

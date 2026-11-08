@@ -59,6 +59,7 @@ export async function approveArticle(_: ActionState, form: FormData): Promise<Ac
       destinations: form.getAll("destinations").map(String),
       xFormat: form.get("xFormat") === "single" ? "single" : "thread",
       imageIds: form.getAll("imageIds").map(String),
+      publishAt: form.get("when") === "later" && form.get("publishAt") ? new Date(String(form.get("publishAt"))) : null,
     });
   } catch (err) {
     if (err instanceof GateError) return { error: err.message };
@@ -66,7 +67,7 @@ export async function approveArticle(_: ActionState, form: FormData): Promise<Ac
   }
   kick();
   refresh();
-  return { ok: "Approved. Publishing now — this page will update." };
+  return { ok: form.get("when") === "later" ? "Approved and scheduled. You can publish early or cancel from your order page." : "Approved. Publishing now — this page will update." };
 }
 
 export async function editArticle(_: ActionState, form: FormData): Promise<ActionState> {
@@ -247,5 +248,18 @@ export async function declineImages(form: FormData): Promise<void> {
   const { eq } = await import("drizzle-orm");
   const db = await getDb();
   await db.update(jobs).set({ imagesDeclined: true }).where(eq(jobs.id, jobId));
+  refresh();
+}
+
+/** Order page: publish a scheduled article right away, or cancel the schedule. */
+export async function scheduleAction(form: FormData): Promise<void> {
+  const jobId = verifyLink(String(form.get("t") ?? ""), "order");
+  if (!jobId) throw new Error("This link is invalid or has expired.");
+  const { cancelSchedule, publishNow } = await import("@/lib/workflow/publish");
+  if (form.get("op") === "now") {
+    if (await publishNow(jobId)) kick();
+  } else {
+    await cancelSchedule(jobId);
+  }
   refresh();
 }

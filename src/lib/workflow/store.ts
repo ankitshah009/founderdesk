@@ -96,11 +96,11 @@ export async function reviewForDraft(draftId: string) {
  * Enqueue work. The request key is the idempotency key for the remote call as
  * well, so a retried or duplicated enqueue can never start the work twice.
  */
-export async function enqueue(jobId: string, kind: DispatchKind, requestKey: string, input: Record<string, unknown> = {}) {
+export async function enqueue(jobId: string, kind: DispatchKind, requestKey: string, input: Record<string, unknown> = {}, runAt?: Date) {
   const db = await getDb();
   const [row] = await db
     .insert(dispatches)
-    .values({ jobId, kind, requestKey, input })
+    .values({ jobId, kind, requestKey, input, ...(runAt ? { nextRunAt: runAt } : {}) })
     .onConflictDoNothing({ target: dispatches.requestKey })
     .returning();
   return row ?? null;
