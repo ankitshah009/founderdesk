@@ -250,3 +250,20 @@ describe("publish gate", () => {
     expect(pub?.status).toBe("published");
   });
 });
+
+describe("free first article", () => {
+  it("is granted once per email; the database refuses a second free order", async () => {
+    const { createJob, isFreeEligible } = await import("@/lib/workflow/intake");
+    const db = await getDb();
+    const email = "once@founder.test";
+    const a = await createJob({ channel: "web", founderEmail: email, subject: "A", body: "I want to write about why one free article is enough. My audience is founders." });
+    const b = await createJob({ channel: "web", founderEmail: email, subject: "B", body: "I want to write about why two free articles is too many. My audience is founders." });
+    expect(await isFreeEligible(email)).toBe(true);
+    await db.update(jobs).set({ amountCents: 0 }).where(eq(jobs.id, a.id));
+    expect((await fulfillPayment({ jobId: a.id, checkoutSessionId: `free_${a.id}`, amountTotal: null })).fulfilled).toBe(true);
+    expect(await isFreeEligible(email)).toBe(false);
+    // Even bypassing the eligibility check, the partial unique index refuses it.
+    await db.update(jobs).set({ amountCents: 0 }).where(eq(jobs.id, b.id));
+    await expect(fulfillPayment({ jobId: b.id, checkoutSessionId: `free_${b.id}`, amountTotal: null })).rejects.toThrow();
+  });
+});

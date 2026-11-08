@@ -125,7 +125,7 @@ function Headline({ view, payUrl, freeEligible }: { view: OrderView; payUrl: str
     case "AWAITING_PAYMENT":
       return block(
         "Your brief is in",
-        <>{usableThesis(job) ? <>We&apos;ll argue: <span className="text-fg-2">{usableThesis(job)}</span></> : <>Topic: <span className="text-fg-2">{job.topic}</span></>}{job.audience ? <> — for {job.audience}</> : null}. Pay to start research.</>,
+        <>{usableThesis(job) ? <>We&apos;ll argue: <span className="text-fg-2">{usableThesis(job)}</span></> : <>Topic: <span className="text-fg-2">{job.topic}</span></>}{job.audience ? <> — for {job.audience}</> : null}.{freeEligible ? null : " Pay to start research."}</>,
         freeEligible ? (
           <p className="rounded-xl bg-accent-tint px-4 py-3 text-sm text-fg">
             Your first article is free — open the email we sent to <span className="font-semibold">{job.founderEmail}</span> and confirm it&apos;s you to start.
